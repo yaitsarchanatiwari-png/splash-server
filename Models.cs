@@ -139,4 +139,5 @@ public record UserAccessRequest(string Status, DateTime? AccessStartUtc, DateTim
 public record ChangeUsernameRequest(string NewUsername, string CurrentPassword);
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword, string ConfirmNewPassword);
 public record GrantByUsernameRequest(string Username, double? DurationHours);
+public record FinalizeUpdateRequest(string UploadId, string FileName, string Version, string? ReleaseNotes, string TargetType, string? TargetUserId, string? TargetUsername, bool IsMandatory, string ExpectedSha256, long TotalSizeBytes);
 

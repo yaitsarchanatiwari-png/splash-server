@@ -12,6 +12,16 @@ var builder = WebApplication.CreateBuilder(args);
 // Port configuration: bind to all network interfaces (0.0.0.0) so other PCs on the network can connect
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5050";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 1024L * 1024L * 1024L; // 1 GB body limit
+    options.Limits.MinRequestBodyDataRate = null; // Prevent slow connection drops
+});
+
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 1024L * 1024L * 1024L; // 1 GB multipart limit
+});
 
 builder.Services.AddSingleton<SecurityService>();
 builder.Services.AddSingleton<DatabaseService>();
@@ -603,7 +613,7 @@ app.MapGet("/api/updates/download/{id}", (string id, HttpContext ctx) =>
     }
 
     var stream = File.OpenRead(update.FilePath);
-    return Results.File(stream, "application/octet-stream", update.FileName);
+    return Results.File(stream, "application/octet-stream", update.FileName, enableRangeProcessing: true);
 });
 
 // Report update status
@@ -784,7 +794,156 @@ app.MapGet("/api/admin/updates", () =>
     return Results.Ok(updates);
 });
 
-// Publish Update (multipart form upload with automatic RSA-4096 / RSA-2048 signing)
+// Helper functions for updates storage
+string GetUpdatesStorageDir()
+{
+    var envDataDir = Environment.GetEnvironmentVariable("DATABASE_DIR");
+    string baseDir = !string.IsNullOrWhiteSpace(envDataDir) ? envDataDir.Trim() : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+    var updatesDir = Path.Combine(baseDir, "updates");
+    Directory.CreateDirectory(updatesDir);
+    return updatesDir;
+}
+
+string GetUpdatesStagingDir()
+{
+    var stagingDir = Path.Combine(GetUpdatesStorageDir(), "staging");
+    Directory.CreateDirectory(stagingDir);
+    return stagingDir;
+}
+
+// Upload Chunk for Resumable Large File Publishing (bypasses Cloudflare & Kestrel limits)
+app.MapPost("/api/admin/updates/upload-chunk", async (HttpRequest request, HttpContext ctx) =>
+{
+    var uploadId = request.Query["uploadId"].ToString();
+    if (string.IsNullOrWhiteSpace(uploadId) || !Guid.TryParse(uploadId, out _))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Invalid or missing uploadId GUID." });
+    }
+
+    if (!int.TryParse(request.Query["chunkIndex"], out int chunkIndex) || chunkIndex < 0)
+    {
+        return Results.BadRequest(new { Success = false, Message = "Invalid chunkIndex." });
+    }
+
+    if (!long.TryParse(request.Query["chunkOffset"], out long chunkOffset) || chunkOffset < 0)
+    {
+        return Results.BadRequest(new { Success = false, Message = "Invalid chunkOffset." });
+    }
+
+    var stagingDir = GetUpdatesStagingDir();
+    var partFile = Path.Combine(stagingDir, $"{uploadId}.part");
+
+    using (var fs = new FileStream(partFile, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
+    {
+        fs.Seek(chunkOffset, SeekOrigin.Begin);
+        await request.Body.CopyToAsync(fs);
+        await fs.FlushAsync();
+    }
+
+    return Results.Ok(new { Success = true, UploadId = uploadId, ChunkIndex = chunkIndex });
+});
+
+// Finalize and Cryptographically Sign Chunked Update
+app.MapPost("/api/admin/updates/finalize", async (FinalizeUpdateRequest req, HttpContext ctx) =>
+{
+    if (string.IsNullOrWhiteSpace(req.UploadId) || !Guid.TryParse(req.UploadId, out _))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Invalid uploadId." });
+    }
+
+    if (string.IsNullOrWhiteSpace(req.Version))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Version number is required." });
+    }
+
+    var stagingDir = GetUpdatesStagingDir();
+    var partFile = Path.Combine(stagingDir, $"{req.UploadId}.part");
+
+    if (!File.Exists(partFile))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Update staging file not found on server." });
+    }
+
+    var fileInfo = new FileInfo(partFile);
+    if (fileInfo.Length != req.TotalSizeBytes)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"File size mismatch. Expected {req.TotalSizeBytes} bytes, received {fileInfo.Length} bytes." });
+    }
+
+    // Verify SHA-256 hash streamingly
+    string computedSha;
+    using (var fs = File.OpenRead(partFile))
+    {
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        byte[] hash = await sha.ComputeHashAsync(fs);
+        computedSha = Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    if (!string.IsNullOrWhiteSpace(req.ExpectedSha256) &&
+        !computedSha.Equals(req.ExpectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Cryptographic verification failed: SHA-256 hash mismatch. Expected {req.ExpectedSha256}, got {computedSha}" });
+    }
+
+    // Generate RSA digital signature over file stream
+    string rsaSignature;
+    using (var fs = File.OpenRead(partFile))
+    {
+        rsaSignature = security.SignStream(fs);
+    }
+
+    // Move from staging to permanent updates storage
+    var storageDir = GetUpdatesStorageDir();
+    var ext = Path.GetExtension(req.FileName);
+    if (string.IsNullOrWhiteSpace(ext)) ext = ".exe";
+    var finalPath = Path.Combine(storageDir, $"{req.UploadId}{ext}");
+
+    if (File.Exists(finalPath))
+    {
+        File.Delete(finalPath);
+    }
+    File.Move(partFile, finalPath);
+
+    var updateRecord = new UpdateRecord
+    {
+        Id = req.UploadId,
+        Version = req.Version.Trim(),
+        FileName = string.IsNullOrWhiteSpace(req.FileName) ? $"Java_{req.Version}.exe" : req.FileName,
+        FilePath = finalPath,
+        FileSizeBytes = req.TotalSizeBytes,
+        Sha256Hash = computedSha,
+        RsaSignature = rsaSignature,
+        ReleaseNotes = req.ReleaseNotes ?? "",
+        TargetType = req.TargetType.Equals("user", StringComparison.OrdinalIgnoreCase) ? "user" : "all",
+        TargetUserId = string.IsNullOrWhiteSpace(req.TargetUserId) ? null : req.TargetUserId,
+        TargetUsername = string.IsNullOrWhiteSpace(req.TargetUsername) ? null : req.TargetUsername,
+        CreatedAtUtc = DateTime.UtcNow,
+        IsMandatory = req.IsMandatory,
+        Status = UpdateStatus.Published
+    };
+
+    db.CreateUpdate(updateRecord);
+    db.AddAudit("ADMIN", "PUBLISH_UPDATE", $"Published cryptographically signed update v{req.Version} ({updateRecord.FileSizeMb} MB, SHA: {computedSha[..8]}..., RSA-Verified)", ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
+
+    return Results.Ok(new { Success = true, Message = "Update successfully assembled, verified, and published.", Update = updateRecord });
+});
+
+// Cancel Upload & Clean Staging
+app.MapPost("/api/admin/updates/cancel-upload", (HttpRequest request) =>
+{
+    var uploadId = request.Query["uploadId"].ToString();
+    if (!string.IsNullOrWhiteSpace(uploadId))
+    {
+        var partFile = Path.Combine(GetUpdatesStagingDir(), $"{uploadId}.part");
+        if (File.Exists(partFile))
+        {
+            try { File.Delete(partFile); } catch { }
+        }
+    }
+    return Results.Ok(new { Success = true });
+});
+
+// Publish Update (Legacy single-request multipart form upload with automatic RSA signing)
 app.MapPost("/api/admin/updates/publish", async (HttpRequest request, HttpContext ctx) =>
 {
     if (!request.HasFormContentType)
@@ -812,23 +971,26 @@ app.MapPost("/api/admin/updates/publish", async (HttpRequest request, HttpContex
     var isMandatory = form["isMandatory"].ToString().Equals("true", StringComparison.OrdinalIgnoreCase);
 
     var updateId = Guid.NewGuid().ToString();
-    var storageDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "updates");
-    Directory.CreateDirectory(storageDir);
+    var storageDir = GetUpdatesStorageDir();
 
     var ext = Path.GetExtension(file.FileName);
     if (string.IsNullOrWhiteSpace(ext)) ext = ".exe";
     var savedFilePath = Path.Combine(storageDir, $"{updateId}{ext}");
 
+    using (var fs = new FileStream(savedFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
+    {
+        await file.CopyToAsync(fs);
+    }
+
     string sha256;
     string rsaSignature;
-
-    using (var ms = new MemoryStream())
+    using (var fs = File.OpenRead(savedFilePath))
     {
-        await file.CopyToAsync(ms);
-        var bytes = ms.ToArray();
-        sha256 = SecurityService.ComputeSha256(bytes);
-        rsaSignature = security.SignData(bytes); // Digitally sign with server RSA private key!
-        await File.WriteAllBytesAsync(savedFilePath, bytes);
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        byte[] hash = await sha.ComputeHashAsync(fs);
+        sha256 = Convert.ToHexString(hash).ToLowerInvariant();
+        fs.Position = 0;
+        rsaSignature = security.SignStream(fs);
     }
 
     var updateRecord = new UpdateRecord

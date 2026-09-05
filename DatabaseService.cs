@@ -689,14 +689,24 @@ public class DatabaseService
         cmd.CommandText = @"
             SELECT * FROM updates
             WHERE (target_type = 'all' OR target_user_id = @uid)
-              AND version != @curVer
+              AND status = 1
             ORDER BY created_at_utc DESC
             LIMIT 1
         ";
         cmd.Parameters.AddWithValue("@uid", userId);
-        cmd.Parameters.AddWithValue("@curVer", currentVersion);
         using var reader = cmd.ExecuteReader();
-        return reader.Read() ? MapUpdate(reader) : null;
+        if (!reader.Read()) return null;
+
+        var latest = MapUpdate(reader);
+        string curClean = (currentVersion ?? "").Trim().TrimStart('v', 'V');
+        string latClean = (latest.Version ?? "").Trim().TrimStart('v', 'V');
+
+        if (string.Equals(curClean, latClean, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return latest;
     }
 
     public void UpdateUpdateStatus(string id, UpdateStatus status)

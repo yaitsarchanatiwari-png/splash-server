@@ -172,6 +172,12 @@ public class SecurityService
         return Convert.ToBase64String(signature);
     }
 
+    public string SignStream(Stream stream)
+    {
+        byte[] signature = _rsa.SignData(stream, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        return Convert.ToBase64String(signature);
+    }
+
     public string SignString(string text)
     {
         byte[] data = Encoding.UTF8.GetBytes(text);
