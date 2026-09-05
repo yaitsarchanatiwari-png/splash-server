@@ -860,20 +860,15 @@ public class DatabaseService
             FilePath = reader.GetString(3),
             FileSizeBytes = reader.GetInt64(4),
             Sha256Hash = reader.GetString(5),
-            ReleaseNotes = reader.GetString(6),
-            TargetType = reader.GetString(7),
-            TargetUserId = reader.IsDBNull(8) ? null : reader.GetString(8),
-            TargetUsername = reader.IsDBNull(9) ? null : reader.GetString(9),
-            CreatedAtUtc = DateTime.Parse(reader.GetString(10)),
-            IsMandatory = reader.GetInt32(11) == 1,
-            Status = (UpdateStatus)reader.GetInt32(12)
+            RsaSignature = reader.IsDBNull(6) ? "" : reader.GetString(6),
+            ReleaseNotes = reader.IsDBNull(7) ? "" : reader.GetString(7),
+            TargetType = reader.IsDBNull(8) ? "all" : reader.GetString(8),
+            TargetUserId = reader.IsDBNull(9) ? null : reader.GetString(9),
+            TargetUsername = reader.IsDBNull(10) ? null : reader.GetString(10),
+            CreatedAtUtc = reader.IsDBNull(11) ? DateTime.UtcNow : DateTime.Parse(reader.GetString(11)),
+            IsMandatory = !reader.IsDBNull(12) && reader.GetInt32(12) == 1,
+            Status = !reader.IsDBNull(13) ? (UpdateStatus)reader.GetInt32(13) : UpdateStatus.Published
         };
-
-        // Extra rsa_signature column if present
-        if (reader.FieldCount > 13 && !reader.IsDBNull(13))
-        {
-            update.RsaSignature = reader.GetString(13);
-        }
 
         return update;
     }
