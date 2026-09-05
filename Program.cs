@@ -1,0 +1,893 @@
+using System.IO;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using Java.Server;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Port configuration: bind to all network interfaces (0.0.0.0) so other PCs on the network can connect
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5050";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
+builder.Services.AddSingleton<SecurityService>();
+builder.Services.AddSingleton<DatabaseService>();
+
+// Background scheduling engine
+builder.Services.AddHostedService<ScheduledAccessWorker>();
+
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+});
+
+var app = builder.Build();
+
+app.UseCors();
+
+// Security Headers Middleware
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.Append("X-Frame-Options", "DENY");
+    context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+    context.Response.Headers.Append("Referrer-Policy", "no-referrer");
+    await next();
+});
+
+var security = app.Services.GetRequiredService<SecurityService>();
+var db = app.Services.GetRequiredService<DatabaseService>();
+
+// Root / Health check & Server Public Key
+app.MapGet("/", () => Results.Ok(new { Name = "Java Protected Licensing & Cryptographic Update Server", Version = "1.0.0", Status = "Online" }));
+app.MapGet("/api/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow }));
+app.MapGet("/api/server/public-key", () => Results.Ok(new { PublicKeyPem = security.PublicKeyPem, PublicKeyXml = security.PublicKeyXml }));
+
+#region Public Client Authentication & Session Endpoints
+
+// Register
+app.MapPost("/api/auth/register", (RegisterRequest req, HttpContext ctx) =>
+{
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    if (security.IsRateLimited(ip, req.Username, out int retryAfter))
+    {
+        return Results.Json(new AuthResponse(false, $"Too many registration attempts. Please wait {retryAfter} seconds before trying again.", null, null, null, null, null), statusCode: 429);
+    }
+
+    if (string.IsNullOrWhiteSpace(req.Username) || !Regex.IsMatch(req.Username.Trim(), @"^[a-zA-Z0-9_\-\.]{3,32}$"))
+    {
+        return Results.BadRequest(new AuthResponse(false, "Username must be between 3 and 32 characters and contain only letters, numbers, underscores, dashes, or dots (no spaces).", null, null, null, null, null));
+    }
+
+    if (!SecurityService.ValidatePasswordComplexity(req.Password, out var passError))
+    {
+        return Results.BadRequest(new AuthResponse(false, passError ?? "Password does not meet complexity requirements.", null, null, null, null, null));
+    }
+
+    if (req.Password != req.ConfirmPassword)
+    {
+        return Results.BadRequest(new AuthResponse(false, "Passwords do not match.", null, null, null, null, null));
+    }
+
+    var existing = db.GetUserByUsername(req.Username);
+    if (existing != null)
+    {
+        security.RecordFailedAttempt(ip, req.Username);
+        return Results.BadRequest(new AuthResponse(false, $"Username '{req.Username}' is already taken. Please choose another username.", null, null, null, null, null));
+    }
+
+    var (hash, salt) = security.HashPassword(req.Password);
+    var user = new UserRecord
+    {
+        Username = req.Username.Trim(),
+        PasswordHash = hash,
+        PasswordSalt = salt,
+        Status = AccessStatus.PendingApproval, // Must be approved by administrator
+        CurrentAppVersion = "1.0.0",
+        LastIp = ip,
+        LastSeenUtc = DateTime.UtcNow,
+        SecurityStamp = Guid.NewGuid().ToString("N")
+    };
+
+    db.CreateUser(user);
+
+    // Bind Device if provided
+    var deviceId = req.DeviceId?.Trim() ?? "";
+    if (!string.IsNullOrWhiteSpace(deviceId))
+    {
+        db.ValidateOrBindDevice(user.Id, deviceId, req.DeviceName ?? "Windows PC", out _);
+    }
+
+    db.AddAudit(user.Username, "REGISTER", "New user registered. Pending administrator approval.", ip, deviceId);
+
+    // Issue short-lived access token (15m)
+    var accessToken = security.GenerateSecureToken(32);
+    db.CreateSession(new SessionRecord
+    {
+        Token = accessToken,
+        UserId = user.Id,
+        Username = user.Username,
+        DeviceId = deviceId,
+        SecurityStamp = user.SecurityStamp,
+        IsAdmin = false,
+        ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+    });
+
+    // Issue 7-day high-entropy refresh token
+    var rawRefreshToken = security.GenerateSecureToken(48);
+    var refreshHash = SecurityService.ComputeSha256(rawRefreshToken);
+    db.CreateRefreshToken(new RefreshTokenRecord
+    {
+        TokenHash = refreshHash,
+        UserId = user.Id,
+        DeviceId = deviceId,
+        CreatedAtUtc = DateTime.UtcNow,
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(7)
+    });
+
+    var userDto = new UserDto(user.Id, user.Username, user.Status.ToString(), user.AccessStartUtc, user.AccessEndUtc, user.ScheduledAction, user.ScheduledTimeUtc, user.CurrentAppVersion, user.LastSeenUtc, user.DeviceLockId);
+    return Results.Ok(new AuthResponse(true, "Registration successful. Awaiting administrator access approval.", accessToken, rawRefreshToken, user.Status.ToString(), null, userDto));
+});
+
+// Login
+app.MapPost("/api/auth/login", (LoginRequest req, HttpContext ctx) =>
+{
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    if (security.IsRateLimited(ip, req.Username, out int retryAfter))
+    {
+        return Results.Json(new AuthResponse(false, $"Too many failed login attempts. Account temporarily locked for {retryAfter} seconds.", null, null, null, null, null), statusCode: 429);
+    }
+
+    if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
+    {
+        return Results.BadRequest(new AuthResponse(false, "Username and password are required.", null, null, null, null, null));
+    }
+
+    var user = db.GetUserByUsername(req.Username);
+
+    // Constant-time check and generic error to prevent username enumeration
+    bool valid = user != null && security.VerifyPassword(req.Password, user.PasswordHash, user.PasswordSalt);
+    if (!valid || user == null)
+    {
+        security.RecordFailedAttempt(ip, req.Username);
+        db.AddAudit(req.Username, "LOGIN_FAILED", "Invalid credentials provided", ip, req.DeviceId);
+        return Results.BadRequest(new AuthResponse(false, "Invalid username or password.", null, null, null, null, null));
+    }
+
+    // Check account lockout
+    if (user.LockoutUntilUtc.HasValue && DateTime.UtcNow < user.LockoutUntilUtc.Value)
+    {
+        int rem = (int)Math.Ceiling((user.LockoutUntilUtc.Value - DateTime.UtcNow).TotalSeconds);
+        return Results.Json(new AuthResponse(false, $"Account locked due to consecutive failed attempts. Try again in {rem} seconds.", null, null, null, null, null), statusCode: 423);
+    }
+
+    // Hardware / Device ID Lock Check
+    var deviceId = req.DeviceId?.Trim() ?? "";
+    if (!string.IsNullOrWhiteSpace(deviceId))
+    {
+        if (!db.ValidateOrBindDevice(user.Id, deviceId, req.DeviceName ?? "Windows PC", out var devErr))
+        {
+            db.AddAudit(user.Username, "LOGIN_DEVICE_REJECTED", $"Rejected unauthorized device: {devErr}", ip, deviceId);
+            return Results.Json(new AuthResponse(false, devErr ?? "Device authorization failed.", null, null, null, null, null), statusCode: 403);
+        }
+    }
+
+    security.ResetAttempts(ip, req.Username);
+
+    // Update version & activity
+    if (!string.IsNullOrWhiteSpace(req.ClientVersion))
+    {
+        user.CurrentAppVersion = req.ClientVersion;
+    }
+    user.LastIp = ip;
+    user.LastSeenUtc = DateTime.UtcNow;
+    user.FailedLoginCount = 0;
+    user.LockoutUntilUtc = null;
+    db.UpdateUser(user);
+
+    // Issue short-lived access token (15m)
+    var accessToken = security.GenerateSecureToken(32);
+    db.CreateSession(new SessionRecord
+    {
+        Token = accessToken,
+        UserId = user.Id,
+        Username = user.Username,
+        DeviceId = deviceId,
+        SecurityStamp = user.SecurityStamp,
+        IsAdmin = user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase),
+        ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+    });
+
+    // Issue 7-day high-entropy refresh token
+    var rawRefreshToken = security.GenerateSecureToken(48);
+    var refreshHash = SecurityService.ComputeSha256(rawRefreshToken);
+    db.CreateRefreshToken(new RefreshTokenRecord
+    {
+        TokenHash = refreshHash,
+        UserId = user.Id,
+        DeviceId = deviceId,
+        CreatedAtUtc = DateTime.UtcNow,
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(7)
+    });
+
+    db.AddAudit(user.Username, "LOGIN_SUCCESS", $"Login authenticated. Status: {user.Status}", ip, deviceId);
+
+    // Generate cryptographic session lease if authorized
+    LeaseEnvelope? lease = null;
+    if (user.Status == AccessStatus.Approved && !string.IsNullOrWhiteSpace(deviceId))
+    {
+        lease = security.CreateSignedLease(user, deviceId);
+    }
+
+    var userDto = new UserDto(user.Id, user.Username, user.Status.ToString(), user.AccessStartUtc, user.AccessEndUtc, user.ScheduledAction, user.ScheduledTimeUtc, user.CurrentAppVersion, user.LastSeenUtc, user.DeviceLockId);
+    return Results.Ok(new AuthResponse(true, "Login successful.", accessToken, rawRefreshToken, user.Status.ToString(), lease, userDto));
+});
+
+// Refresh Access Token
+app.MapPost("/api/auth/refresh", (RefreshTokenRequest req, HttpContext ctx) =>
+{
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    if (string.IsNullOrWhiteSpace(req.RefreshToken) || string.IsNullOrWhiteSpace(req.DeviceId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var tokenHash = SecurityService.ComputeSha256(req.RefreshToken);
+    var existingRefresh = db.GetRefreshToken(tokenHash);
+
+    if (existingRefresh == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    if (existingRefresh.IsRevoked)
+    {
+        // Stolen token reuse detected: revoke all user sessions immediately!
+        db.RevokeAllUserSessions(existingRefresh.UserId, "REVOKED_REFRESH_TOKEN_REUSED");
+        db.AddAudit(existingRefresh.UserId, "TOKEN_HIJACK_DETECTED", "Revoked refresh token was reused; purged all sessions", ip, req.DeviceId);
+        return Results.Unauthorized();
+    }
+
+    if (DateTime.UtcNow > existingRefresh.ExpiresAtUtc)
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!string.Equals(existingRefresh.DeviceId, req.DeviceId, StringComparison.OrdinalIgnoreCase))
+    {
+        db.AddAudit(existingRefresh.UserId, "REFRESH_DEVICE_MISMATCH", "Refresh token device mismatch", ip, req.DeviceId);
+        return Results.Unauthorized();
+    }
+
+    var user = db.GetUserById(existingRefresh.UserId);
+    if (user == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    // Rotate refresh token
+    var newRawRefresh = security.GenerateSecureToken(48);
+    var newRefreshHash = SecurityService.ComputeSha256(newRawRefresh);
+    var newRefreshTokenRecord = new RefreshTokenRecord
+    {
+        TokenHash = newRefreshHash,
+        UserId = user.Id,
+        DeviceId = req.DeviceId,
+        CreatedAtUtc = DateTime.UtcNow,
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(7)
+    };
+    db.RotateRefreshToken(tokenHash, newRefreshTokenRecord);
+
+    // Issue fresh short-lived access token (15m)
+    var newAccessToken = security.GenerateSecureToken(32);
+    db.CreateSession(new SessionRecord
+    {
+        Token = newAccessToken,
+        UserId = user.Id,
+        Username = user.Username,
+        DeviceId = req.DeviceId,
+        SecurityStamp = user.SecurityStamp,
+        IsAdmin = user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase),
+        ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+    });
+
+    LeaseEnvelope? lease = null;
+    if (user.Status == AccessStatus.Approved)
+    {
+        lease = security.CreateSignedLease(user, req.DeviceId);
+    }
+
+    var userDto = new UserDto(user.Id, user.Username, user.Status.ToString(), user.AccessStartUtc, user.AccessEndUtc, user.ScheduledAction, user.ScheduledTimeUtc, user.CurrentAppVersion, user.LastSeenUtc, user.DeviceLockId);
+    return Results.Ok(new AuthResponse(true, "Token refreshed successfully.", newAccessToken, newRawRefresh, user.Status.ToString(), lease, userDto));
+});
+
+// Access Status & Cryptographic Rolling Lease Heartbeat
+app.MapGet("/api/auth/status", (HttpContext ctx) =>
+{
+    var authHeader = ctx.Request.Headers["Authorization"].ToString();
+    if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer "))
+    {
+        return Results.Unauthorized();
+    }
+
+    var token = authHeader.Substring("Bearer ".Length).Trim();
+    var session = db.GetSession(token);
+    if (session == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    var user = db.GetUserById(session.UserId);
+    if (user == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    // Immediate Revocation check: verify security stamp
+    if (user.SecurityStamp != session.SecurityStamp)
+    {
+        db.DeleteSession(token);
+        return Results.Unauthorized();
+    }
+
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    user.LastSeenUtc = DateTime.UtcNow;
+    user.LastIp = ip;
+    db.UpdateUser(user);
+    db.ExtendSession(token, DateTime.UtcNow.AddMinutes(30));
+
+    var nowUtc = DateTime.UtcNow;
+
+    // Immediate Expiration Enforcement: Never trust client clock
+    if (user.Status == AccessStatus.Approved && user.AccessEndUtc.HasValue && nowUtc >= user.AccessEndUtc.Value)
+    {
+        user.Status = AccessStatus.Expired;
+        db.UpdateUser(user);
+        db.AddAudit(user.Username, "EXPIRE", $"Access expired at {user.AccessEndUtc:u}", ip, session.DeviceId);
+        return Results.Ok(new StatusResponse(false, "Expired", "Access period has expired.", user.AccessEndUtc, false, null, nowUtc));
+    }
+
+    bool hasAccess = user.Status == AccessStatus.Approved;
+    string message = user.Status switch
+    {
+        AccessStatus.PendingApproval => "Account pending administrator approval.",
+        AccessStatus.Approved => "Access active and verified.",
+        AccessStatus.Suspended => "Access has been temporarily suspended by administrator.",
+        AccessStatus.Revoked => "Access has been permanently revoked.",
+        AccessStatus.Expired => "Access period has expired.",
+        _ => "Access denied."
+    };
+
+    // If approved, create fresh signed lease valid for 90 seconds
+    LeaseEnvelope? lease = null;
+    if (hasAccess && !string.IsNullOrWhiteSpace(session.DeviceId))
+    {
+        lease = security.CreateSignedLease(user, session.DeviceId);
+    }
+
+    return Results.Ok(new StatusResponse(true, user.Status.ToString(), message, user.AccessEndUtc, hasAccess, lease, nowUtc));
+});
+
+// Logout
+app.MapPost("/api/auth/logout", (HttpContext ctx) =>
+{
+    var authHeader = ctx.Request.Headers["Authorization"].ToString();
+    if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Bearer "))
+    {
+        var token = authHeader.Substring("Bearer ".Length).Trim();
+        db.DeleteSession(token);
+    }
+    return Results.Ok(new { Success = true });
+});
+
+// User Profile: Change Username
+app.MapPost("/api/user/change-username", (ChangeUsernameRequest req, HttpContext ctx) =>
+{
+    var authHeader = ctx.Request.Headers["Authorization"].ToString();
+    if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer "))
+    {
+        return Results.Unauthorized();
+    }
+    var token = authHeader.Substring("Bearer ".Length).Trim();
+    var session = db.GetSession(token);
+    if (session == null) return Results.Unauthorized();
+    var user = db.GetUserById(session.UserId);
+    if (user == null || user.SecurityStamp != session.SecurityStamp) return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(req.NewUsername) || !Regex.IsMatch(req.NewUsername.Trim(), @"^[a-zA-Z0-9_\-\.]{3,32}$"))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Username must be between 3 and 32 characters and contain only letters, numbers, underscores, dashes, or dots (no spaces)." });
+    }
+
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    // Verify current password
+    if (!security.VerifyPassword(req.CurrentPassword, user.PasswordHash, user.PasswordSalt))
+    {
+        db.AddAudit(user.Username, "CHANGE_USERNAME_FAILED", "Invalid current password provided", ip);
+        return Results.BadRequest(new { Success = false, Message = "Current password is incorrect." });
+    }
+
+    var trimmedNewName = req.NewUsername.Trim();
+    if (trimmedNewName.Equals(user.Username, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { Success = false, Message = "New username is identical to current username." });
+    }
+
+    var existing = db.GetUserByUsername(trimmedNewName);
+    if (existing != null)
+    {
+        return Results.BadRequest(new { Success = false, Message = "Username is already taken by another account." });
+    }
+
+    var oldName = user.Username;
+
+    // 1. Invalidate all previous sessions & leases FIRST
+    db.RevokeAllUserSessions(user.Id, "USERNAME_CHANGED_ACCESS_REVOKED");
+
+    // Refresh user object after revocation rotated the security stamp
+    user = db.GetUserById(user.Id)!;
+
+    // 2. Immediately revoke existing access on server & update username:
+    user.Username = trimmedNewName;
+    user.Status = AccessStatus.PendingApproval; // Must require fresh admin approval!
+    user.AccessStartUtc = null;                 // Strip previous access window!
+    user.AccessEndUtc = null;                   // Strip previous access duration!
+    user.ScheduledAction = null;
+    user.ScheduledTimeUtc = null;
+
+    db.UpdateUserCredentials(user.Id, trimmedNewName, user.PasswordHash, user.PasswordSalt, user.SecurityStamp);
+    db.UpdateUser(user);
+
+    // 3. Issue new unapproved session token for the user to wait for access
+    var newAccessToken = security.GenerateSecureToken(32);
+    db.CreateSession(new SessionRecord
+    {
+        Token = newAccessToken,
+        UserId = user.Id,
+        Username = trimmedNewName,
+        DeviceId = session.DeviceId,
+        SecurityStamp = user.SecurityStamp,
+        IsAdmin = false,
+        ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+    });
+
+    var rawRefresh = security.GenerateSecureToken(48);
+    var refreshHash = SecurityService.ComputeSha256(rawRefresh);
+    db.CreateRefreshToken(new RefreshTokenRecord
+    {
+        TokenHash = refreshHash,
+        UserId = user.Id,
+        DeviceId = session.DeviceId,
+        CreatedAtUtc = DateTime.UtcNow,
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(7)
+    });
+
+    db.AddAudit(trimmedNewName, "USERNAME_CHANGED_ACCESS_REVOKED", $"User '{oldName}' changed username to '{trimmedNewName}'. Previous access immediately revoked; status set to PendingApproval.", ip, session.DeviceId);
+
+    return Results.Ok(new
+    {
+        Success = true,
+        Message = "Username changed successfully. All previous access revoked; waiting for administrator approval.",
+        NewUsername = trimmedNewName,
+        Status = "PendingApproval",
+        NewToken = newAccessToken,
+        NewRefreshToken = rawRefresh
+    });
+});
+
+// User Profile: Change Password
+app.MapPost("/api/user/change-password", (ChangePasswordRequest req, HttpContext ctx) =>
+{
+    var authHeader = ctx.Request.Headers["Authorization"].ToString();
+    if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer "))
+    {
+        return Results.Unauthorized();
+    }
+    var token = authHeader.Substring("Bearer ".Length).Trim();
+    var session = db.GetSession(token);
+    if (session == null) return Results.Unauthorized();
+    var user = db.GetUserById(session.UserId);
+    if (user == null || user.SecurityStamp != session.SecurityStamp) return Results.Unauthorized();
+
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+
+    // 1. Verify current password
+    if (!security.VerifyPassword(req.CurrentPassword, user.PasswordHash, user.PasswordSalt))
+    {
+        db.AddAudit(user.Username, "CHANGE_PASSWORD_FAILED", "Invalid current password provided", ip);
+        return Results.BadRequest(new { Success = false, Message = "Current password is incorrect." });
+    }
+
+    // 2. Validate complexity of new password
+    if (!SecurityService.ValidatePasswordComplexity(req.NewPassword, out var passErr))
+    {
+        return Results.BadRequest(new { Success = false, Message = passErr ?? "Password does not meet complexity requirements." });
+    }
+
+    // 3. Confirm match
+    if (req.NewPassword != req.ConfirmNewPassword)
+    {
+        return Results.BadRequest(new { Success = false, Message = "New passwords do not match." });
+    }
+
+    // 4. Hash new password with PBKDF2-SHA512 + 32-byte salt
+    var (newHash, newSalt) = security.HashPassword(req.NewPassword);
+
+    // Invalidate previous sessions
+    db.RevokeAllUserSessions(user.Id, "PASSWORD_CHANGED");
+
+    // Refresh user after revocation
+    user = db.GetUserById(user.Id)!;
+    user.PasswordHash = newHash;
+    user.PasswordSalt = newSalt;
+
+    db.UpdateUserCredentials(user.Id, user.Username, newHash, newSalt, user.SecurityStamp);
+    db.UpdateUser(user);
+
+    // Issue fresh active session and rotating refresh token for current device
+    var newAccessToken = security.GenerateSecureToken(32);
+    db.CreateSession(new SessionRecord
+    {
+        Token = newAccessToken,
+        UserId = user.Id,
+        Username = user.Username,
+        DeviceId = session.DeviceId,
+        SecurityStamp = user.SecurityStamp,
+        IsAdmin = user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase),
+        ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+    });
+
+    var rawRefresh = security.GenerateSecureToken(48);
+    var refreshHash = SecurityService.ComputeSha256(rawRefresh);
+    db.CreateRefreshToken(new RefreshTokenRecord
+    {
+        TokenHash = refreshHash,
+        UserId = user.Id,
+        DeviceId = session.DeviceId,
+        CreatedAtUtc = DateTime.UtcNow,
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(7)
+    });
+
+    db.AddAudit(user.Username, "PASSWORD_CHANGED", "Password changed successfully; rotated sessions and security stamp", ip, session.DeviceId);
+
+    return Results.Ok(new
+    {
+        Success = true,
+        Message = "Password changed successfully.",
+        NewToken = newAccessToken,
+        NewRefreshToken = rawRefresh
+    });
+});
+
+#endregion
+
+#region Client Cryptographic Updates Endpoints
+
+// Check update (with RSA-4096 / RSA-2048 signature verification support)
+app.MapGet("/api/updates/check", (string? currentVersion, HttpContext ctx) =>
+{
+    var authHeader = ctx.Request.Headers["Authorization"].ToString();
+    if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer "))
+    {
+        return Results.Unauthorized();
+    }
+
+    var token = authHeader.Substring("Bearer ".Length).Trim();
+    var session = db.GetSession(token);
+    if (session == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    var curVer = currentVersion ?? "1.0.0";
+    var latest = db.GetLatestUpdateForUser(session.UserId, curVer);
+    if (latest == null)
+    {
+        return Results.Ok(new UpdateCheckResponse(false, null, null, 0, null, null, null, null, false));
+    }
+
+    var downloadUrl = $"/api/updates/download/{latest.Id}";
+    return Results.Ok(new UpdateCheckResponse(true, latest.Id, latest.Version, latest.FileSizeMb, latest.ReleaseNotes, latest.Sha256Hash, latest.RsaSignature, downloadUrl, latest.IsMandatory));
+});
+
+// Download update file
+app.MapGet("/api/updates/download/{id}", (string id, HttpContext ctx) =>
+{
+    var update = db.GetUpdateById(id);
+    if (update == null || !File.Exists(update.FilePath))
+    {
+        return Results.NotFound(new { Message = "Update file not found." });
+    }
+
+    var stream = File.OpenRead(update.FilePath);
+    return Results.File(stream, "application/octet-stream", update.FileName);
+});
+
+// Report update status
+app.MapPost("/api/updates/report-status", (ReportStatusRequest req, HttpContext ctx) =>
+{
+    if (Enum.TryParse<UpdateStatus>(req.Status, true, out var status))
+    {
+        db.UpdateUpdateStatus(req.UpdateId, status);
+        db.AddAudit("CLIENT", "UPDATE_STATUS", $"Update {req.UpdateId} status: {status} {(req.ErrorMessage != null ? $"Error: {req.ErrorMessage}" : "")}", ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
+        return Results.Ok(new { Success = true });
+    }
+    return Results.BadRequest(new { Message = "Invalid status." });
+});
+
+#endregion
+
+#region Admin Endpoints
+
+// Admin Login
+app.MapPost("/api/admin/login", (LoginRequest req, HttpContext ctx) =>
+{
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    if (security.IsRateLimited(ip, req.Username, out int retryAfter))
+    {
+        return Results.Problem($"Rate limit exceeded. Try again in {retryAfter} seconds.", statusCode: 429);
+    }
+
+    var user = db.GetUserByUsername(req.Username);
+    if (user == null || !security.VerifyPassword(req.Password, user.PasswordHash, user.PasswordSalt) || !user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase))
+    {
+        security.RecordFailedAttempt(ip, req.Username);
+        db.AddAudit(req.Username, "ADMIN_LOGIN_FAILED", "Failed admin control panel login", ip);
+        return Results.BadRequest(new AuthResponse(false, "Invalid administrator credentials.", null, null, null, null, null));
+    }
+
+    security.ResetAttempts(ip, req.Username);
+    var token = security.GenerateSecureToken(32);
+    db.CreateSession(new SessionRecord
+    {
+        Token = token,
+        UserId = user.Id,
+        Username = user.Username,
+        DeviceId = "ADMIN_CONSOLE",
+        SecurityStamp = user.SecurityStamp,
+        IsAdmin = true,
+        ExpiresAtUtc = DateTime.UtcNow.AddHours(12)
+    });
+
+    db.AddAudit(user.Username, "ADMIN_LOGIN_SUCCESS", "Administrator logged in to Control Panel", ip);
+    var userDto = new UserDto(user.Id, user.Username, user.Status.ToString(), user.AccessStartUtc, user.AccessEndUtc, user.ScheduledAction, user.ScheduledTimeUtc, user.CurrentAppVersion, user.LastSeenUtc, user.DeviceLockId);
+    return Results.Ok(new AuthResponse(true, "Admin authenticated.", token, null, user.Status.ToString(), null, userDto));
+});
+
+// Get Users list
+app.MapGet("/api/admin/users", (string? search, string? status, HttpContext ctx) =>
+{
+    var users = db.GetAllUsers(search, status);
+    var dtos = users.Select(u => new UserDto(u.Id, u.Username, u.Status.ToString(), u.AccessStartUtc, u.AccessEndUtc, u.ScheduledAction, u.ScheduledTimeUtc, u.CurrentAppVersion, u.LastSeenUtc, u.DeviceLockId));
+    return Results.Ok(dtos);
+});
+
+// Update User Access
+app.MapPost("/api/admin/users/{id}/access", (string id, UserAccessRequest req, HttpContext ctx) =>
+{
+    var user = db.GetUserById(id);
+    if (user == null)
+    {
+        return Results.NotFound(new { Message = "User not found." });
+    }
+
+    if (Enum.TryParse<AccessStatus>(req.Status, true, out var parsedStatus))
+    {
+        user.Status = parsedStatus;
+        if (parsedStatus == AccessStatus.Approved)
+        {
+            if (user.AccessStartUtc == null)
+            {
+                user.AccessStartUtc = DateTime.UtcNow;
+            }
+            // Restore refresh tokens if previously revoked
+            db.RestoreUserTokensOnApproval(user.Id);
+        }
+    }
+
+    if (req.AccessStartUtc.HasValue) user.AccessStartUtc = req.AccessStartUtc;
+    if (req.AccessEndUtc.HasValue) user.AccessEndUtc = req.AccessEndUtc;
+    if (req.ScheduledAction != null) user.ScheduledAction = req.ScheduledAction;
+    if (req.ScheduledTimeUtc.HasValue) user.ScheduledTimeUtc = req.ScheduledTimeUtc;
+
+    db.UpdateUser(user);
+    db.AddAudit("ADMIN", "UPDATE_ACCESS", $"Updated user '{user.Username}' status to {user.Status}, Scheduled: {user.ScheduledAction} at {user.ScheduledTimeUtc:u}", ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
+
+    return Results.Ok(new { Success = true, Message = "Access settings updated." });
+});
+
+// Delete User permanently (Right-Click -> Delete in Control Panel)
+app.MapDelete("/api/admin/users/{id}", (string id, HttpContext ctx) =>
+{
+    var user = db.GetUserById(id);
+    if (user == null)
+    {
+        return Results.NotFound(new { Success = false, Message = "User not found." });
+    }
+
+    if (user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Cannot delete the master administrator account." });
+    }
+
+    bool deleted = db.DeleteUser(id);
+    if (deleted)
+    {
+        return Results.Ok(new { Success = true, Message = $"User '{user.Username}' permanently deleted." });
+    }
+    return Results.Problem("Failed to delete user from database.");
+});
+
+// Grant Access directly by Username (Server Authoritative)
+app.MapPost("/api/admin/users/grant-by-username", (GrantByUsernameRequest req, HttpContext ctx) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Username))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Username is required." });
+    }
+
+    var trimmedName = req.Username.Trim();
+    var user = db.GetUserByUsername(trimmedName);
+    if (user == null)
+    {
+        return Results.NotFound(new { Success = false, Message = $"Account with username '{trimmedName}' does not exist. The user must register first." });
+    }
+
+    user.Status = AccessStatus.Approved;
+    user.AccessStartUtc = DateTime.UtcNow;
+    if (req.DurationHours.HasValue && req.DurationHours.Value > 0)
+    {
+        user.AccessEndUtc = DateTime.UtcNow.AddHours(req.DurationHours.Value);
+    }
+    else
+    {
+        user.AccessEndUtc = null; // Permanent / Lifetime
+    }
+    user.ScheduledAction = null;
+    user.ScheduledTimeUtc = null;
+
+    db.UpdateUser(user);
+    db.RestoreUserTokensOnApproval(user.Id);
+
+    var durationText = req.DurationHours.HasValue && req.DurationHours.Value > 0 ? $"{req.DurationHours.Value} hours" : "Permanent";
+    db.AddAudit("ADMIN", "GRANT_ACCESS_BY_USERNAME", $"Admin granted {durationText} access directly to user '{user.Username}'", ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
+
+    return Results.Ok(new
+    {
+        Success = true,
+        Message = $"Access successfully granted to user '{user.Username}'. Duration: {durationText}.",
+        User = new UserDto(user.Id, user.Username, user.Status.ToString(), user.AccessStartUtc, user.AccessEndUtc, user.ScheduledAction, user.ScheduledTimeUtc, user.CurrentAppVersion, user.LastSeenUtc, user.DeviceLockId)
+    });
+});
+
+// Reset Device Binding Lock
+app.MapPost("/api/admin/users/{id}/reset-device", (string id, HttpContext ctx) =>
+{
+    db.ResetUserDevice(id);
+    return Results.Ok(new { Success = true, Message = "Device binding reset successfully." });
+});
+
+// Immediate Revocation of all user sessions
+app.MapPost("/api/admin/users/{id}/revoke-sessions", (string id, HttpContext ctx) =>
+{
+    db.RevokeAllUserSessions(id, "ADMIN_FORCED_REVOCATION");
+    return Results.Ok(new { Success = true, Message = "All active sessions revoked immediately." });
+});
+
+// Get Updates list
+app.MapGet("/api/admin/updates", () =>
+{
+    var updates = db.GetAllUpdates();
+    return Results.Ok(updates);
+});
+
+// Publish Update (multipart form upload with automatic RSA-4096 / RSA-2048 signing)
+app.MapPost("/api/admin/updates/publish", async (HttpRequest request, HttpContext ctx) =>
+{
+    if (!request.HasFormContentType)
+    {
+        return Results.BadRequest(new { Message = "Expected multipart/form-data" });
+    }
+
+    var form = await request.ReadFormAsync();
+    var file = form.Files.GetFile("file");
+    if (file == null || file.Length == 0)
+    {
+        return Results.BadRequest(new { Message = "No update .exe file provided." });
+    }
+
+    var version = form["version"].ToString();
+    if (string.IsNullOrWhiteSpace(version))
+    {
+        return Results.BadRequest(new { Message = "Version number is required." });
+    }
+
+    var releaseNotes = form["releaseNotes"].ToString();
+    var targetType = form["targetType"].ToString(); // "all" or "user"
+    var targetUserId = form["targetUserId"].ToString();
+    var targetUsername = form["targetUsername"].ToString();
+    var isMandatory = form["isMandatory"].ToString().Equals("true", StringComparison.OrdinalIgnoreCase);
+
+    var updateId = Guid.NewGuid().ToString();
+    var storageDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "updates");
+    Directory.CreateDirectory(storageDir);
+
+    var ext = Path.GetExtension(file.FileName);
+    if (string.IsNullOrWhiteSpace(ext)) ext = ".exe";
+    var savedFilePath = Path.Combine(storageDir, $"{updateId}{ext}");
+
+    string sha256;
+    string rsaSignature;
+
+    using (var ms = new MemoryStream())
+    {
+        await file.CopyToAsync(ms);
+        var bytes = ms.ToArray();
+        sha256 = SecurityService.ComputeSha256(bytes);
+        rsaSignature = security.SignData(bytes); // Digitally sign with server RSA private key!
+        await File.WriteAllBytesAsync(savedFilePath, bytes);
+    }
+
+    var updateRecord = new UpdateRecord
+    {
+        Id = updateId,
+        Version = version.Trim(),
+        FileName = file.FileName,
+        FilePath = savedFilePath,
+        FileSizeBytes = file.Length,
+        Sha256Hash = sha256,
+        RsaSignature = rsaSignature,
+        ReleaseNotes = releaseNotes,
+        TargetType = targetType.Equals("user", StringComparison.OrdinalIgnoreCase) ? "user" : "all",
+        TargetUserId = string.IsNullOrWhiteSpace(targetUserId) ? null : targetUserId,
+        TargetUsername = string.IsNullOrWhiteSpace(targetUsername) ? null : targetUsername,
+        CreatedAtUtc = DateTime.UtcNow,
+        IsMandatory = isMandatory,
+        Status = UpdateStatus.Published
+    };
+
+    db.CreateUpdate(updateRecord);
+    db.AddAudit("ADMIN", "PUBLISH_UPDATE", $"Published cryptographically signed update v{version} ({updateRecord.FileSizeMb} MB, SHA: {sha256[..8]}..., RSA-Verified)", ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
+
+    return Results.Ok(new { Success = true, Message = "Update published with cryptographic signature.", Update = updateRecord });
+});
+
+// Audit logs
+app.MapGet("/api/admin/audit", () =>
+{
+    var logs = db.GetAuditLogs(100);
+    return Results.Ok(logs);
+});
+
+#endregion
+
+app.Run();
+
+// Background Scheduled Access Engine
+public class ScheduledAccessWorker : BackgroundService
+{
+    private readonly DatabaseService _db;
+
+    public ScheduledAccessWorker(DatabaseService db)
+    {
+        _db = db;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                _db.ProcessScheduledActions();
+            }
+            catch { }
+
+            await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+        }
+    }
+}
+
