@@ -363,7 +363,7 @@ function initFaq() {
   });
 }
 
-// Dynamic 3D Particle & Ambient Light Streaks Canvas
+// Dynamic Multi-Layered 3D Particle & Ambient Light Canvas
 function initBackgroundCanvas() {
   const canvas = document.getElementById('bg-canvas');
   if (!canvas) return;
@@ -384,70 +384,58 @@ function initBackgroundCanvas() {
   let animationFrameId = null;
   let isTabVisible = true;
 
-  // Track cursor for ambient interactive field
-  let mouse = { x: -9999, y: -9999, active: false };
+  // Mouse cursor tracking with smooth interpolation
+  let mouse = { x: -9999, y: -9999, targetX: -9999, targetY: -9999, active: false };
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     width = window.innerWidth;
     height = window.innerHeight;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
   }
 
   resize();
   window.addEventListener('resize', () => {
     resize();
-    initParticles();
+    initScene();
   }, { passive: true });
 
   window.addEventListener('pointermove', (e) => {
-    mouse.x = e.clientX;
-    mouse.y = e.clientY;
-    mouse.active = true;
+    mouse.targetX = e.clientX;
+    mouse.targetY = e.clientY;
+    if (!mouse.active) {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      mouse.active = true;
+    }
   }, { passive: true });
 
   window.addEventListener('pointerleave', () => {
     mouse.active = false;
   });
 
-  // Particle System Definition
-  const particleCount = Math.min(36, Math.floor(window.innerWidth / 38));
-  let particles = [];
-
-  class Particle {
+  // Layer 1: Subtle Background Motes (Deep Layer, Slow & Soft)
+  class BackgroundMote {
     constructor() {
       this.reset(true);
     }
     reset(initial = false) {
       this.x = Math.random() * width;
-      this.y = initial ? Math.random() * height : height + 10;
-      this.vx = (Math.random() - 0.5) * 0.4;
-      this.vy = -(0.25 + Math.random() * 0.4);
-      this.radius = 1.0 + Math.random() * 1.6;
-      this.alpha = 0.15 + Math.random() * 0.3;
+      this.y = initial ? Math.random() * height : height + 15;
+      this.vx = (Math.random() - 0.5) * 0.2;
+      this.vy = -(0.1 + Math.random() * 0.25);
+      this.radius = 0.6 + Math.random() * 0.9;
+      this.alpha = 0.06 + Math.random() * 0.12;
       this.baseAlpha = this.alpha;
-      this.pulseSpeed = 0.015 + Math.random() * 0.02;
-      this.pulseAngle = Math.random() * Math.PI * 2;
+      this.phase = Math.random() * Math.PI * 2;
     }
     update() {
-      this.x += this.vx;
+      this.phase += 0.012;
+      this.x += this.vx + Math.sin(this.phase) * 0.15;
       this.y += this.vy;
-      this.pulseAngle += this.pulseSpeed;
-      this.alpha = this.baseAlpha + Math.sin(this.pulseAngle) * 0.1;
-
-      // Mouse gentle repulsion / push
-      if (mouse.active) {
-        const dx = this.x - mouse.x;
-        const dy = this.y - mouse.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 110 && dist > 0) {
-          const force = (110 - dist) / 110 * 1.2;
-          this.x += (dx / dist) * force;
-          this.y += (dy / dist) * force;
-        }
-      }
 
       if (this.y < -20 || this.x < -20 || this.x > width + 20) {
         this.reset();
@@ -456,25 +444,122 @@ function initBackgroundCanvas() {
     draw() {
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(0, 136, 255, ${Math.max(0.05, this.alpha)})`;
-      ctx.shadowBlur = 6;
-      ctx.shadowColor = 'rgba(0, 136, 255, 0.45)';
+      ctx.fillStyle = `rgba(56, 189, 248, ${this.alpha})`;
+      ctx.fill();
+    }
+  }
+
+  // Layer 2: Floating Cyan/Blue Embers (Mid/Foreground, Vibrant & Interactive)
+  class FloatingEmber {
+    constructor() {
+      this.reset(true);
+    }
+    reset(initial = false) {
+      this.x = Math.random() * width;
+      this.y = initial ? Math.random() * height : height + 10;
+      this.vx = (Math.random() - 0.5) * 0.45;
+      this.vy = -(0.25 + Math.random() * 0.45);
+      this.radius = 1.2 + Math.random() * 1.8;
+      this.alpha = 0.15 + Math.random() * 0.35;
+      this.baseAlpha = this.alpha;
+      this.pulseSpeed = 0.018 + Math.random() * 0.025;
+      this.pulseAngle = Math.random() * Math.PI * 2;
+      this.colorType = Math.random() > 0.4 ? 'blue' : 'cyan';
+      this.pushVx = 0;
+      this.pushVy = 0;
+    }
+    update() {
+      this.pulseAngle += this.pulseSpeed;
+      this.alpha = this.baseAlpha + Math.sin(this.pulseAngle) * 0.12;
+
+      // Cursor gentle repulsion field
+      if (mouse.active) {
+        const dx = this.x - mouse.x;
+        const dy = this.y - mouse.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const maxDist = 135;
+        if (dist < maxDist && dist > 0) {
+          const force = (maxDist - dist) / maxDist;
+          this.pushVx += (dx / dist) * force * 0.4;
+          this.pushVy += (dy / dist) * force * 0.4;
+        }
+      }
+
+      // Apply damping to velocity push
+      this.pushVx *= 0.92;
+      this.pushVy *= 0.92;
+
+      this.x += this.vx + this.pushVx;
+      this.y += this.vy + this.pushVy;
+
+      if (this.y < -20 || this.x < -20 || this.x > width + 20) {
+        this.reset();
+      }
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      if (this.colorType === 'blue') {
+        ctx.fillStyle = `rgba(0, 136, 255, ${Math.max(0.06, this.alpha)})`;
+        ctx.shadowColor = 'rgba(0, 136, 255, 0.5)';
+      } else {
+        ctx.fillStyle = `rgba(56, 189, 248, ${Math.max(0.06, this.alpha)})`;
+        ctx.shadowColor = 'rgba(56, 189, 248, 0.55)';
+      }
+      ctx.shadowBlur = 8;
       ctx.fill();
       ctx.shadowBlur = 0;
     }
   }
 
-  // Soft Light Streaks (gentle glowing lines across background)
+  // Layer 3: Soft Blue Ambient Glow Orbs (Slow drifting volumetric light)
+  class AmbientGlowOrb {
+    constructor(x, y, radius, alpha) {
+      this.baseX = x;
+      this.baseY = y;
+      this.x = x;
+      this.y = y;
+      this.radius = radius;
+      this.alpha = alpha;
+      this.angle = Math.random() * Math.PI * 2;
+      this.speed = 0.005 + Math.random() * 0.006;
+    }
+    update() {
+      this.angle += this.speed;
+      this.x = this.baseX + Math.cos(this.angle) * 60;
+      this.y = this.baseY + Math.sin(this.angle) * 45;
+
+      // Soft response to mouse position
+      if (mouse.active) {
+        const dx = (mouse.x - width / 2) * 0.04;
+        const dy = (mouse.y - height / 2) * 0.04;
+        this.x += dx;
+        this.y += dy;
+      }
+    }
+    draw() {
+      const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+      grad.addColorStop(0, `rgba(0, 136, 255, ${this.alpha})`);
+      grad.addColorStop(0.5, `rgba(56, 189, 248, ${this.alpha * 0.4})`);
+      grad.addColorStop(1, 'rgba(0, 136, 255, 0)');
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+  }
+
+  // Layer 4: Soft Light Streaks (gentle glowing diagonal lines)
   class LightStreak {
     constructor() {
       this.reset();
     }
     reset() {
       this.x = Math.random() * width;
-      this.y = Math.random() * height;
-      this.length = 120 + Math.random() * 160;
-      this.speed = 0.7 + Math.random() * 1.0;
-      this.alpha = 0.03 + Math.random() * 0.05;
+      this.y = Math.random() * height * 0.8;
+      this.length = 140 + Math.random() * 180;
+      this.speed = 0.8 + Math.random() * 1.1;
+      this.alpha = 0.035 + Math.random() * 0.055;
       this.angle = Math.PI / 4;
     }
     update() {
@@ -482,46 +567,61 @@ function initBackgroundCanvas() {
       this.y += Math.sin(this.angle) * this.speed;
       if (this.x > width + this.length || this.y > height + this.length) {
         this.x = Math.random() * width - 200;
-        this.y = -50;
+        this.y = -60;
+        this.alpha = 0.035 + Math.random() * 0.055;
       }
     }
     draw() {
-      const grad = ctx.createLinearGradient(
-        this.x, this.y,
-        this.x + Math.cos(this.angle) * this.length,
-        this.y + Math.sin(this.angle) * this.length
-      );
+      const endX = this.x + Math.cos(this.angle) * this.length;
+      const endY = this.y + Math.sin(this.angle) * this.length;
+      const grad = ctx.createLinearGradient(this.x, this.y, endX, endY);
       grad.addColorStop(0, 'rgba(0, 136, 255, 0)');
       grad.addColorStop(0.5, `rgba(56, 189, 248, ${this.alpha})`);
       grad.addColorStop(1, 'rgba(0, 136, 255, 0)');
 
       ctx.beginPath();
       ctx.moveTo(this.x, this.y);
-      ctx.lineTo(
-        this.x + Math.cos(this.angle) * this.length,
-        this.y + Math.sin(this.angle) * this.length
-      );
+      ctx.lineTo(endX, endY);
       ctx.strokeStyle = grad;
-      ctx.lineWidth = 1.0;
+      ctx.lineWidth = 1.2;
       ctx.stroke();
     }
   }
 
-  function initParticles() {
-    particles = [];
-    for (let i = 0; i < particleCount; i++) {
-      particles.push(new Particle());
+  let motes = [];
+  let embers = [];
+  let streaks = [];
+  let glowOrbs = [];
+
+  function initScene() {
+    const moteCount = Math.min(42, Math.floor(width / 32));
+    const emberCount = Math.min(32, Math.floor(width / 42));
+
+    motes = [];
+    for (let i = 0; i < moteCount; i++) {
+      motes.push(new BackgroundMote());
     }
+
+    embers = [];
+    for (let i = 0; i < emberCount; i++) {
+      embers.push(new FloatingEmber());
+    }
+
+    streaks = [new LightStreak(), new LightStreak(), new LightStreak()];
+
+    glowOrbs = [
+      new AmbientGlowOrb(width * 0.25, height * 0.35, 220, 0.045),
+      new AmbientGlowOrb(width * 0.75, height * 0.65, 260, 0.038)
+    ];
   }
 
-  const streaks = [new LightStreak(), new LightStreak()];
-  initParticles();
+  initScene();
 
   let lastTime = performance.now();
   function render(time) {
     if (!isTabVisible) return;
 
-    // Cap updates to avoid wasting GPU cycles (~70fps cap)
+    // Smooth frame timing cap (~60-70fps) to eliminate GPU strain
     const elapsed = time - lastTime;
     if (elapsed < 14) {
       animationFrameId = requestAnimationFrame(render);
@@ -529,54 +629,72 @@ function initBackgroundCanvas() {
     }
     lastTime = time;
 
+    // Smooth mouse position lerping
+    if (mouse.active) {
+      mouse.x += (mouse.targetX - mouse.x) * 0.18;
+      mouse.y += (mouse.targetY - mouse.y) * 0.18;
+    }
+
     ctx.clearRect(0, 0, width, height);
 
-    // Draw light streaks
+    // 1. Draw Ambient Glow Orbs
+    glowOrbs.forEach(orb => {
+      orb.update();
+      orb.draw();
+    });
+
+    // 2. Draw Diagonal Light Streaks
     streaks.forEach(streak => {
       streak.update();
       streak.draw();
     });
 
-    // Draw connecting filaments
-    for (let i = 0; i < particles.length; i++) {
-      for (let j = i + 1; j < particles.length; j++) {
-        const dx = particles[i].x - particles[j].x;
-        const dy = particles[i].y - particles[j].y;
+    // 3. Draw Background Motes
+    motes.forEach(m => {
+      m.update();
+      m.draw();
+    });
+
+    // 4. Draw Connecting Filaments between nearby Embers
+    for (let i = 0; i < embers.length; i++) {
+      for (let j = i + 1; j < embers.length; j++) {
+        const dx = embers[i].x - embers[j].x;
+        const dy = embers[i].y - embers[j].y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 95) {
-          const alpha = (1 - dist / 95) * 0.12;
+        if (dist < 90) {
+          const alpha = (1 - dist / 90) * 0.14;
           ctx.beginPath();
-          ctx.moveTo(particles[i].x, particles[i].y);
-          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.moveTo(embers[i].x, embers[i].y);
+          ctx.lineTo(embers[j].x, embers[j].y);
           ctx.strokeStyle = `rgba(0, 136, 255, ${alpha})`;
-          ctx.lineWidth = 0.5;
+          ctx.lineWidth = 0.6;
           ctx.stroke();
         }
       }
     }
 
-    // Draw mouse filaments if close
+    // 5. Draw Interactive Cursor Filaments
     if (mouse.active) {
-      for (let i = 0; i < particles.length; i++) {
-        const dx = particles[i].x - mouse.x;
-        const dy = particles[i].y - mouse.y;
+      for (let i = 0; i < embers.length; i++) {
+        const dx = embers[i].x - mouse.x;
+        const dy = embers[i].y - mouse.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 105) {
-          const alpha = (1 - dist / 105) * 0.18;
+        if (dist < 115) {
+          const alpha = (1 - dist / 115) * 0.22;
           ctx.beginPath();
-          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.moveTo(embers[i].x, embers[i].y);
           ctx.lineTo(mouse.x, mouse.y);
           ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
-          ctx.lineWidth = 0.7;
+          ctx.lineWidth = 0.8;
           ctx.stroke();
         }
       }
     }
 
-    // Update & draw particles
-    particles.forEach(p => {
-      p.update();
-      p.draw();
+    // 6. Draw Foreground Glowing Embers
+    embers.forEach(e => {
+      e.update();
+      e.draw();
     });
 
     animationFrameId = requestAnimationFrame(render);
