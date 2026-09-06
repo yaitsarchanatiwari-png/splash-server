@@ -324,12 +324,15 @@ app.MapPost("/api/auth/login", (LoginRequest req, HttpContext ctx) =>
 
     var user = db.GetUserByUsername(req.Username);
 
-    // Constant-time check and generic error to prevent username enumeration
     bool valid = user != null && security.VerifyPassword(req.Password, user.PasswordHash, user.PasswordSalt);
     if (!valid || user == null)
     {
         security.RecordFailedAttempt(ip, req.Username);
         db.AddAudit(req.Username, "LOGIN_FAILED", "Invalid credentials provided", ip, req.DeviceId);
+        if (user != null && string.IsNullOrEmpty(user.DeviceLockId) && user.Status == AccessStatus.Approved)
+        {
+            return Results.BadRequest(new AuthResponse(false, "Account is pre-approved! Please switch to 'Register New Account' tab to choose your personal password and activate.", null, null, null, null, null));
+        }
         return Results.BadRequest(new AuthResponse(false, "Invalid username or password.", null, null, null, null, null));
     }
 
