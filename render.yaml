@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: splash-panel
+    name: splash
     runtime: docker
     plan: free
     region: singapore
