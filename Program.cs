@@ -48,20 +48,130 @@ app.Use(async (context, next) =>
     await next();
 });
 
+// Discover all possible wwwroot locations (bin directory, content root, or source directory)
+string[] wwwrootCandidates = [
+    Path.Combine(app.Environment.ContentRootPath, "wwwroot"),
+    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot"),
+    Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "wwwroot"))
+];
+
+var validWwwroots = wwwrootCandidates.Where(Directory.Exists).Distinct().ToList();
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+foreach (var dir in validWwwroots)
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(dir),
+        RequestPath = ""
+    });
+}
+
+string? FindHtmlFile(params string[] subPaths)
+{
+    foreach (var dir in validWwwroots)
+    {
+        var target = Path.Combine(dir, Path.Combine(subPaths));
+        if (File.Exists(target)) return target;
+    }
+    return null;
+}
+
 var security = app.Services.GetRequiredService<SecurityService>();
 var db = app.Services.GetRequiredService<DatabaseService>();
 
-// Root / Health check & Server Public Key
-app.MapGet("/", () => Results.Ok(new { Name = "Java Protected Licensing & Cryptographic Update Server", Version = "1.0.0", Status = "Online" }));
+// Root / Splash Website & Health Check
+app.MapGet("/", () =>
+{
+    var path = FindHtmlFile("index.html");
+    if (path != null) return Results.File(path, "text/html");
+    return Results.Ok(new { Name = "Splash Protected Licensing & Cryptographic Update Server", Version = "1.0.0", Status = "Online", AdminPanel = "/admin" });
+});
 app.MapGet("/api/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow }));
 app.MapGet("/api/server/public-key", () => Results.Ok(new { PublicKeyPem = security.PublicKeyPem, PublicKeyXml = security.PublicKeyXml }));
+
+// Web Admin Control Panel Endpoints
+app.MapGet("/admin", () =>
+{
+    var path = FindHtmlFile("admin", "index.html");
+    if (path != null) return Results.File(path, "text/html");
+    return Results.NotFound("Admin panel index.html not found.");
+});
+
+app.MapGet("/admin/{*path}", (string path) =>
+{
+    var adminDirs = validWwwroots.Select(w => Path.Combine(w, "admin")).Where(Directory.Exists);
+    foreach (var b in adminDirs)
+    {
+        var full = Path.Combine(b, path.Replace('/', Path.DirectorySeparatorChar));
+        if (File.Exists(full))
+        {
+            var ext = Path.GetExtension(full).ToLowerInvariant();
+            var contentType = ext switch
+            {
+                ".html" => "text/html",
+                ".css" => "text/css",
+                ".js" => "application/javascript",
+                ".png" => "image/png",
+                ".ico" => "image/x-icon",
+                ".svg" => "image/svg+xml",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                _ => "application/octet-stream"
+            };
+            return Results.File(full, contentType);
+        }
+    }
+    // Fallback to admin index.html for client routing
+    var fallback = FindHtmlFile("admin", "index.html");
+    if (fallback != null) return Results.File(fallback, "text/html");
+    return Results.NotFound();
+});
+
+// Auth Page (Sign In & Register)
+app.MapGet("/auth", () =>
+{
+    var path = FindHtmlFile("auth", "index.html");
+    if (path != null) return Results.File(path, "text/html");
+    return Results.NotFound("Auth page index.html not found.");
+});
+
+app.MapGet("/login", () => Results.Redirect("/auth"));
+app.MapGet("/register", () => Results.Redirect("/auth#register"));
+
+string GetClientIp(HttpContext ctx)
+{
+    if (ctx.Request.Headers.TryGetValue("CF-Connecting-IP", out var cfIp) && !string.IsNullOrWhiteSpace(cfIp))
+    {
+        return cfIp.ToString().Trim();
+    }
+    if (ctx.Request.Headers.TryGetValue("X-Forwarded-For", out var xff) && !string.IsNullOrWhiteSpace(xff))
+    {
+        var raw = xff.ToString();
+        var idx = raw.IndexOf(',');
+        var ip = (idx > 0 ? raw.Substring(0, idx) : raw).Trim();
+        if (!string.IsNullOrWhiteSpace(ip)) return ip;
+    }
+    if (ctx.Request.Headers.TryGetValue("X-Real-IP", out var xReal) && !string.IsNullOrWhiteSpace(xReal))
+    {
+        return xReal.ToString().Trim();
+    }
+    var remote = ctx.Connection.RemoteIpAddress?.ToString();
+    if (!string.IsNullOrWhiteSpace(remote))
+    {
+        if (remote == "::1") return "127.0.0.1";
+        return remote;
+    }
+    return "127.0.0.1";
+}
 
 #region Public Client Authentication & Session Endpoints
 
 // Register
 app.MapPost("/api/auth/register", (RegisterRequest req, HttpContext ctx) =>
 {
-    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    var ip = GetClientIp(ctx);
     if (security.IsRateLimited(ip, req.Username, out int retryAfter))
     {
         return Results.Json(new AuthResponse(false, $"Too many registration attempts. Please wait {retryAfter} seconds before trying again.", null, null, null, null, null), statusCode: 429);
@@ -85,6 +195,62 @@ app.MapPost("/api/auth/register", (RegisterRequest req, HttpContext ctx) =>
     var existing = db.GetUserByUsername(req.Username);
     if (existing != null)
     {
+        // Allow claiming pre-approved account created by admin
+        if (existing.Status == AccessStatus.Approved && string.IsNullOrEmpty(existing.DeviceLockId))
+        {
+            var (claimHash, claimSalt) = security.HashPassword(req.Password);
+            db.UpdateUserCredentials(existing.Id, existing.Username, claimHash, claimSalt, Guid.NewGuid().ToString("N"));
+            existing = db.GetUserById(existing.Id) ?? existing;
+
+            var devId = req.DeviceId?.Trim() ?? "";
+            if (!string.IsNullOrWhiteSpace(devId))
+            {
+                db.ValidateOrBindDevice(existing.Id, devId, req.DeviceName ?? "Windows PC", out _);
+            }
+
+            db.AddAudit(existing.Username, "CLAIM_PREAPPROVED", "User claimed pre-approved license account and set credentials.", ip, devId);
+
+            var accToken = security.GenerateSecureToken(32);
+            db.CreateSession(new SessionRecord
+            {
+                Token = accToken,
+                UserId = existing.Id,
+                Username = existing.Username,
+                DeviceId = devId,
+                SecurityStamp = existing.SecurityStamp,
+                IsAdmin = false,
+                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+            });
+
+            var claimRefreshToken = security.GenerateSecureToken(48);
+            var claimRefreshHash = SecurityService.ComputeSha256(claimRefreshToken);
+            db.CreateRefreshToken(new RefreshTokenRecord
+            {
+                TokenHash = claimRefreshHash,
+                UserId = existing.Id,
+                DeviceId = devId,
+                CreatedAtUtc = DateTime.UtcNow,
+                ExpiresAtUtc = DateTime.UtcNow.AddDays(7)
+            });
+
+            LeaseEnvelope? lease = null;
+            if (!string.IsNullOrWhiteSpace(devId))
+            {
+                lease = security.CreateSignedLease(existing, devId);
+            }
+
+            var claimUserDto = new UserDto(existing.Id, existing.Username, existing.Status.ToString(), existing.AccessStartUtc, existing.AccessEndUtc, existing.ScheduledAction, existing.ScheduledTimeUtc, existing.CurrentAppVersion, existing.LastSeenUtc, existing.DeviceLockId);
+            return Results.Ok(new AuthResponse(
+                true,
+                "Pre-approved license activated! Your password has been set and access is active.",
+                accToken,
+                claimRefreshToken,
+                existing.Status.ToString(),
+                lease,
+                claimUserDto
+            ));
+        }
+
         security.RecordFailedAttempt(ip, req.Username);
         return Results.BadRequest(new AuthResponse(false, $"Username '{req.Username}' is already taken. Please choose another username.", null, null, null, null, null));
     }
@@ -145,7 +311,7 @@ app.MapPost("/api/auth/register", (RegisterRequest req, HttpContext ctx) =>
 // Login
 app.MapPost("/api/auth/login", (LoginRequest req, HttpContext ctx) =>
 {
-    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    var ip = GetClientIp(ctx);
     if (security.IsRateLimited(ip, req.Username, out int retryAfter))
     {
         return Results.Json(new AuthResponse(false, $"Too many failed login attempts. Account temporarily locked for {retryAfter} seconds.", null, null, null, null, null), statusCode: 429);
@@ -239,7 +405,7 @@ app.MapPost("/api/auth/login", (LoginRequest req, HttpContext ctx) =>
 // Refresh Access Token
 app.MapPost("/api/auth/refresh", (RefreshTokenRequest req, HttpContext ctx) =>
 {
-    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    var ip = GetClientIp(ctx);
     if (string.IsNullOrWhiteSpace(req.RefreshToken) || string.IsNullOrWhiteSpace(req.DeviceId))
     {
         return Results.Unauthorized();
@@ -343,7 +509,7 @@ app.MapGet("/api/auth/status", (HttpContext ctx) =>
         return Results.Unauthorized();
     }
 
-    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    var ip = GetClientIp(ctx);
     user.LastSeenUtc = DateTime.UtcNow;
     user.LastIp = ip;
     db.UpdateUser(user);
@@ -412,7 +578,7 @@ app.MapPost("/api/user/change-username", (ChangeUsernameRequest req, HttpContext
         return Results.BadRequest(new { Success = false, Message = "Username must be between 3 and 32 characters and contain only letters, numbers, underscores, dashes, or dots (no spaces)." });
     }
 
-    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    var ip = GetClientIp(ctx);
     // Verify current password
     if (!security.VerifyPassword(req.CurrentPassword, user.PasswordHash, user.PasswordSalt))
     {
@@ -502,7 +668,7 @@ app.MapPost("/api/user/change-password", (ChangePasswordRequest req, HttpContext
     var user = db.GetUserById(session.UserId);
     if (user == null || user.SecurityStamp != session.SecurityStamp) return Results.Unauthorized();
 
-    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    var ip = GetClientIp(ctx);
 
     // 1. Verify current password
     if (!security.VerifyPassword(req.CurrentPassword, user.PasswordHash, user.PasswordSalt))
@@ -622,7 +788,7 @@ app.MapPost("/api/updates/report-status", (ReportStatusRequest req, HttpContext 
     if (Enum.TryParse<UpdateStatus>(req.Status, true, out var status))
     {
         db.UpdateUpdateStatus(req.UpdateId, status);
-        db.AddAudit("CLIENT", "UPDATE_STATUS", $"Update {req.UpdateId} status: {status} {(req.ErrorMessage != null ? $"Error: {req.ErrorMessage}" : "")}", ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
+        db.AddAudit("CLIENT", "UPDATE_STATUS", $"Update {req.UpdateId} status: {status} {(req.ErrorMessage != null ? $"Error: {req.ErrorMessage}" : "")}", GetClientIp(ctx));
         return Results.Ok(new { Success = true });
     }
     return Results.BadRequest(new { Message = "Invalid status." });
@@ -635,14 +801,15 @@ app.MapPost("/api/updates/report-status", (ReportStatusRequest req, HttpContext 
 // Admin Login
 app.MapPost("/api/admin/login", (LoginRequest req, HttpContext ctx) =>
 {
-    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    var ip = GetClientIp(ctx);
     if (security.IsRateLimited(ip, req.Username, out int retryAfter))
     {
         return Results.Problem($"Rate limit exceeded. Try again in {retryAfter} seconds.", statusCode: 429);
     }
 
     var user = db.GetUserByUsername(req.Username);
-    if (user == null || !security.VerifyPassword(req.Password, user.PasswordHash, user.PasswordSalt) || !user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase))
+    bool isAdmin = user != null && (user.IsAdmin || user.Username.Equals("AzPlayzZ", StringComparison.OrdinalIgnoreCase) || user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase));
+    if (user == null || !isAdmin || !security.VerifyPassword(req.Password, user.PasswordHash, user.PasswordSalt))
     {
         security.RecordFailedAttempt(ip, req.Username);
         db.AddAudit(req.Username, "ADMIN_LOGIN_FAILED", "Failed admin control panel login", ip);
@@ -696,6 +863,11 @@ app.MapPost("/api/admin/users/{id}/access", (string id, UserAccessRequest req, H
             // Restore refresh tokens if previously revoked
             db.RestoreUserTokensOnApproval(user.Id);
         }
+        else if (parsedStatus is AccessStatus.Revoked or AccessStatus.Suspended or AccessStatus.PendingApproval)
+        {
+            // Immediately purge all sessions and invalidate refresh tokens
+            db.RevokeAllUserSessions(user.Id, $"ADMIN_STATUS_{parsedStatus}", GetClientIp(ctx));
+        }
     }
 
     if (req.AccessStartUtc.HasValue) user.AccessStartUtc = req.AccessStartUtc;
@@ -704,7 +876,7 @@ app.MapPost("/api/admin/users/{id}/access", (string id, UserAccessRequest req, H
     if (req.ScheduledTimeUtc.HasValue) user.ScheduledTimeUtc = req.ScheduledTimeUtc;
 
     db.UpdateUser(user);
-    db.AddAudit("ADMIN", "UPDATE_ACCESS", $"Updated user '{user.Username}' status to {user.Status}, Scheduled: {user.ScheduledAction} at {user.ScheduledTimeUtc:u}", ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
+    db.AddAudit("ADMIN", "UPDATE_ACCESS", $"Updated user '{user.Username}' status to {user.Status}, Scheduled: {user.ScheduledAction} at {user.ScheduledTimeUtc:u}", GetClientIp(ctx));
 
     return Results.Ok(new { Success = true, Message = "Access settings updated." });
 });
@@ -723,7 +895,7 @@ app.MapDelete("/api/admin/users/{id}", (string id, HttpContext ctx) =>
         return Results.BadRequest(new { Success = false, Message = "Cannot delete the master administrator account." });
     }
 
-    bool deleted = db.DeleteUser(id);
+    bool deleted = db.DeleteUser(id, GetClientIp(ctx));
     if (deleted)
     {
         return Results.Ok(new { Success = true, Message = $"User '{user.Username}' permanently deleted." });
@@ -741,9 +913,47 @@ app.MapPost("/api/admin/users/grant-by-username", (GrantByUsernameRequest req, H
 
     var trimmedName = req.Username.Trim();
     var user = db.GetUserByUsername(trimmedName);
+    var durationText = req.DurationHours.HasValue && req.DurationHours.Value > 0 ? $"{req.DurationHours.Value} hours" : "Permanent (Lifetime)";
+    var callerIp = GetClientIp(ctx);
+
     if (user == null)
     {
-        return Results.NotFound(new { Success = false, Message = $"Account with username '{trimmedName}' does not exist. The user must register first." });
+        if (!Regex.IsMatch(trimmedName, @"^[a-zA-Z0-9_\-\.]{3,32}$"))
+        {
+            return Results.BadRequest(new { Success = false, Message = "Username must be between 3 and 32 characters (letters, numbers, _, -, .)." });
+        }
+
+        // Generate initial password: admin-supplied or trimmedName + "123!"
+        var tempPassword = !string.IsNullOrWhiteSpace(req.InitialPassword) ? req.InitialPassword.Trim() : $"{trimmedName}123!";
+        var (hash, salt) = security.HashPassword(tempPassword);
+
+        user = new UserRecord
+        {
+            Id = Guid.NewGuid().ToString(),
+            Username = trimmedName,
+            PasswordHash = hash,
+            PasswordSalt = salt,
+            Status = AccessStatus.Approved,
+            AccessStartUtc = DateTime.UtcNow,
+            AccessEndUtc = req.DurationHours.HasValue && req.DurationHours.Value > 0 ? DateTime.UtcNow.AddHours(req.DurationHours.Value) : null,
+            CurrentAppVersion = "1.0.0",
+            LastIp = callerIp,
+            LastSeenUtc = DateTime.UtcNow,
+            SecurityStamp = Guid.NewGuid().ToString("N"),
+            CreatedAtUtc = DateTime.UtcNow
+        };
+
+        db.CreateUser(user);
+        db.AddAudit("ADMIN", "CREATE_AND_GRANT_ACCESS", $"Admin created user '{user.Username}' and granted {durationText} access. Default pass: {tempPassword}", callerIp);
+
+        return Results.Ok(new
+        {
+            Success = true,
+            Message = $"Account '{user.Username}' created & granted {durationText} access! Login password: {tempPassword} (or they can set their own upon registration).",
+            IsNewUser = true,
+            DefaultPassword = tempPassword,
+            User = new UserDto(user.Id, user.Username, user.Status.ToString(), user.AccessStartUtc, user.AccessEndUtc, user.ScheduledAction, user.ScheduledTimeUtc, user.CurrentAppVersion, user.LastSeenUtc, user.DeviceLockId)
+        });
     }
 
     user.Status = AccessStatus.Approved;
@@ -762,13 +972,13 @@ app.MapPost("/api/admin/users/grant-by-username", (GrantByUsernameRequest req, H
     db.UpdateUser(user);
     db.RestoreUserTokensOnApproval(user.Id);
 
-    var durationText = req.DurationHours.HasValue && req.DurationHours.Value > 0 ? $"{req.DurationHours.Value} hours" : "Permanent";
-    db.AddAudit("ADMIN", "GRANT_ACCESS_BY_USERNAME", $"Admin granted {durationText} access directly to user '{user.Username}'", ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
+    db.AddAudit("ADMIN", "GRANT_ACCESS_BY_USERNAME", $"Admin granted {durationText} access directly to user '{user.Username}'", callerIp);
 
     return Results.Ok(new
     {
         Success = true,
         Message = $"Access successfully granted to user '{user.Username}'. Duration: {durationText}.",
+        IsNewUser = false,
         User = new UserDto(user.Id, user.Username, user.Status.ToString(), user.AccessStartUtc, user.AccessEndUtc, user.ScheduledAction, user.ScheduledTimeUtc, user.CurrentAppVersion, user.LastSeenUtc, user.DeviceLockId)
     });
 });
@@ -776,14 +986,14 @@ app.MapPost("/api/admin/users/grant-by-username", (GrantByUsernameRequest req, H
 // Reset Device Binding Lock
 app.MapPost("/api/admin/users/{id}/reset-device", (string id, HttpContext ctx) =>
 {
-    db.ResetUserDevice(id);
+    db.ResetUserDevice(id, GetClientIp(ctx));
     return Results.Ok(new { Success = true, Message = "Device binding reset successfully." });
 });
 
 // Immediate Revocation of all user sessions
 app.MapPost("/api/admin/users/{id}/revoke-sessions", (string id, HttpContext ctx) =>
 {
-    db.RevokeAllUserSessions(id, "ADMIN_FORCED_REVOCATION");
+    db.RevokeAllUserSessions(id, "ADMIN_FORCED_REVOCATION", GetClientIp(ctx));
     return Results.Ok(new { Success = true, Message = "All active sessions revoked immediately." });
 });
 
@@ -908,7 +1118,7 @@ app.MapPost("/api/admin/updates/finalize", async (FinalizeUpdateRequest req, Htt
     {
         Id = req.UploadId,
         Version = req.Version.Trim(),
-        FileName = string.IsNullOrWhiteSpace(req.FileName) ? $"Java_{req.Version}.exe" : req.FileName,
+        FileName = string.IsNullOrWhiteSpace(req.FileName) ? $"Splash_{req.Version}.exe" : req.FileName,
         FilePath = finalPath,
         FileSizeBytes = req.TotalSizeBytes,
         Sha256Hash = computedSha,
@@ -923,7 +1133,7 @@ app.MapPost("/api/admin/updates/finalize", async (FinalizeUpdateRequest req, Htt
     };
 
     db.CreateUpdate(updateRecord);
-    db.AddAudit("ADMIN", "PUBLISH_UPDATE", $"Published cryptographically signed update v{req.Version} ({updateRecord.FileSizeMb} MB, SHA: {computedSha[..8]}..., RSA-Verified)", ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
+    db.AddAudit("ADMIN", "PUBLISH_UPDATE", $"Published cryptographically signed update v{req.Version} ({updateRecord.FileSizeMb} MB, SHA: {computedSha[..8]}..., RSA-Verified)", GetClientIp(ctx));
 
     return Results.Ok(new { Success = true, Message = "Update successfully assembled, verified, and published.", Update = updateRecord });
 });
@@ -1012,7 +1222,7 @@ app.MapPost("/api/admin/updates/publish", async (HttpRequest request, HttpContex
     };
 
     db.CreateUpdate(updateRecord);
-    db.AddAudit("ADMIN", "PUBLISH_UPDATE", $"Published cryptographically signed update v{version} ({updateRecord.FileSizeMb} MB, SHA: {sha256[..8]}..., RSA-Verified)", ctx.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
+    db.AddAudit("ADMIN", "PUBLISH_UPDATE", $"Published cryptographically signed update v{version} ({updateRecord.FileSizeMb} MB, SHA: {sha256[..8]}..., RSA-Verified)", GetClientIp(ctx));
 
     return Results.Ok(new { Success = true, Message = "Update published with cryptographic signature.", Update = updateRecord });
 });

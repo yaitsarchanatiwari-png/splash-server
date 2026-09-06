@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Splash — Web Admin Control Panel</title>
+  <link rel="icon" type="image/png" href="/admin/assets/crown_blue.png">
+  <link rel="stylesheet" href="/admin/admin.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Ambient Background Glows -->
+  <div class="glow-bg glow-top-left"></div>
+  <div class="glow-bg glow-bottom-right"></div>
+  <div class="grid-overlay"></div>
+
+  <!-- AUTHENTICATION VIEW (Visible when logged out) -->
+  <div id="loginSection" class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <img src="/admin/assets/crown_blue.png" alt="Splash Crown" class="auth-logo">
+        <h1>SPLASH</h1>
+        <span class="auth-badge">ADMIN CONTROL PANEL</span>
+      </div>
+      <p class="auth-subtitle">Sign in to manage licenses, user permissions, and push cryptographic updates.</p>
+
+      <form id="loginForm" autocomplete="off">
+        <div class="form-group">
+          <label for="adminUsername">Administrator Username</label>
+          <div class="input-wrapper">
+            <svg class="input-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            <input type="text" id="adminUsername" placeholder="Enter admin username" required value="AzPlayzZ">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="adminPassword">Master Password</label>
+          <div class="input-wrapper">
+            <svg class="input-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            <input type="password" id="adminPassword" placeholder="Enter admin password" required>
+          </div>
+        </div>
+
+        <div id="loginError" class="alert-box error hidden"></div>
+
+        <button type="submit" id="loginBtn" class="btn btn-primary btn-block">
+          <span>Authenticate Session</span>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </form>
+      <div class="auth-footer">
+        <span>RSA-4096 Authenticated</span>
+        <span class="dot-separator">•</span>
+        <span>Ring-3 Protected</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN ADMIN DASHBOARD (Visible when logged in) -->
+  <div id="dashboardSection" class="dashboard-wrapper hidden">
+    <!-- Navigation Bar -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <div class="nav-brand">
+          <img src="/admin/assets/crown_blue.png" alt="Splash Crown" class="brand-logo">
+          <div class="brand-info">
+            <span class="brand-title">SPLASH</span>
+            <span class="brand-tag">WEB CONTROL PANEL</span>
+          </div>
+        </div>
+        <nav class="nav-tabs">
+          <button class="nav-tab active" data-tab="users">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>Users & Access</span>
+            <span id="pendingBadge" class="tab-pill hidden">0</span>
+          </button>
+          <button class="nav-tab" data-tab="updates">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            <span>Publish Updates</span>
+          </button>
+          <button class="nav-tab" data-tab="audit">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>Audit Stream</span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="nav-right">
+        <div class="server-status-pill">
+          <span class="status-indicator-dot pulse"></span>
+          <span class="server-status-text">SERVER ONLINE</span>
+        </div>
+        <div class="admin-profile">
+          <div class="avatar-ring">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          </div>
+          <span id="currentAdminName">Administrator</span>
+        </div>
+        <button id="logoutBtn" class="btn btn-outline-danger btn-sm" title="Sign Out">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>Logout</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="dashboard-content">
+      <!-- Quick Stats Bar -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Users</div>
+          <div class="stat-value" id="statTotalUsers">0</div>
+          <div class="stat-meta">Registered across server</div>
+        </div>
+        <div class="stat-card stat-accent">
+          <div class="stat-label">Active Licenses</div>
+          <div class="stat-value text-accent" id="statActiveLicenses">0</div>
+          <div class="stat-meta">Currently approved & valid</div>
+        </div>
+        <div class="stat-card stat-warning">
+          <div class="stat-label">Pending Approval</div>
+          <div class="stat-value text-warning" id="statPendingCount">0</div>
+          <div class="stat-meta">Awaiting access grant</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Published Updates</div>
+          <div class="stat-value" id="statUpdateCount">0</div>
+          <div class="stat-meta">Cryptographically signed</div>
+        </div>
+      </div>
+
+      <!-- TAB 1: USERS & ACCESS -->
+      <section id="tab-users" class="tab-pane active">
+        <!-- Quick Grant Bar -->
+        <div class="card quick-grant-card">
+          <div class="card-header-clean">
+            <div class="card-title-group">
+              <h3>Direct Access Grant</h3>
+              <p>Instant server-authoritative license activation for any account (creates new account if not yet registered)</p>
+            </div>
+          </div>
+          <form id="quickGrantForm" class="quick-grant-row">
+            <div class="input-with-label">
+              <label>Target Username</label>
+              <input type="text" id="quickUsername" placeholder="Enter username (e.g. player1)" required>
+            </div>
+            <div class="input-with-label">
+              <label>Access Duration</label>
+              <select id="quickDuration">
+                <option value="0" selected>Permanent / Lifetime</option>
+                <option value="1">1 Hour (Trial)</option>
+                <option value="24">24 Hours (1 Day)</option>
+                <option value="168">7 Days (1 Week)</option>
+                <option value="720">30 Days (1 Month)</option>
+                <option value="2160">90 Days (3 Months)</option>
+                <option value="8760">365 Days (1 Year)</option>
+              </select>
+            </div>
+            <div class="input-with-label">
+              <label>Password (Optional)</label>
+              <input type="text" id="quickPassword" placeholder="Default: username123!">
+            </div>
+            <button type="submit" class="btn btn-primary grant-submit-btn">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span>Grant Access</span>
+            </button>
+          </form>
+          <div id="quickGrantMsg" class="alert-box success hidden"></div>
+        </div>
+
+        <!-- Users Table Card -->
+        <div class="card table-card">
+          <div class="table-header-toolbar">
+            <div class="toolbar-left">
+              <h3>Registered Users</h3>
+              <span class="user-counter-pill" id="filteredCount">0 Users</span>
+            </div>
+            <div class="toolbar-right">
+              <div class="search-box">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="userSearchInput" placeholder="Search by username...">
+              </div>
+              <select id="statusFilterSelect" class="select-filter">
+                <option value="">All Statuses</option>
+                <option value="Approved">Approved</option>
+                <option value="PendingApproval">Pending Approval</option>
+                <option value="Revoked">Revoked</option>
+                <option value="Expired">Expired</option>
+                <option value="Suspended">Suspended</option>
+              </select>
+              <button id="refreshUsersBtn" class="btn btn-secondary btn-icon" title="Refresh list">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table class="data-table" id="usersTable">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Status</th>
+                  <th>Hardware Binding</th>
+                  <th>Access Period</th>
+                  <th>Version</th>
+                  <th>Last Seen</th>
+                  <th class="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody">
+                <tr>
+                  <td colspan="7" class="empty-state">Loading user registry...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: PUBLISH UPDATES -->
+      <section id="tab-updates" class="tab-pane hidden">
+        <div class="updates-grid">
+          <!-- Update Publisher Studio Form -->
+          <div class="card publisher-card">
+            <div class="card-header-clean">
+              <div class="card-title-group">
+                <h3>Update Publishing Studio</h3>
+                <p>Deploy cryptographically signed Splash binaries directly to clients with live chunking</p>
+              </div>
+            </div>
+
+            <form id="updatePublishForm">
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="updateVersion">Version Number *</label>
+                  <input type="text" id="updateVersion" placeholder="e.g. 1.1.0" required>
+                </div>
+                <div class="form-group">
+                  <label for="updateTargetType">Distribution Target</label>
+                  <select id="updateTargetType">
+                    <option value="all" selected>All Active Users (Global)</option>
+                    <option value="user">Specific User Only (Test/Rollout)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group hidden" id="targetUserGroup">
+                <label for="updateTargetUsername">Target User</label>
+                <input type="text" id="updateTargetUsername" placeholder="Enter target username">
+              </div>
+
+              <div class="form-group">
+                <label for="updateNotes">Changelog & Release Notes</label>
+                <textarea id="updateNotes" rows="3" placeholder="Describe changes, optimizations, and new features..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="updateMandatory">
+                  <span>Mandatory Update (Client cannot use macros until updated)</span>
+                </label>
+              </div>
+
+              <!-- File Dropzone -->
+              <div class="file-dropzone" id="dropzone">
+                <input type="file" id="updateFileInput" accept=".exe,.zip" class="hidden-file-input">
+                <div class="dropzone-content">
+                  <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <div class="dropzone-text">
+                    <span class="dropzone-primary">Click to browse or drag Splash.exe executable here</span>
+                    <span class="dropzone-secondary">Supports binary payloads up to 1 GB with chunked streaming</span>
+                  </div>
+                  <div id="selectedFileInfo" class="selected-file-pill hidden">
+                    <span id="selectedFileName">Splash.exe</span>
+                    <span id="selectedFileSize">(0 MB)</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Upload Progress Panel -->
+              <div id="uploadProgressPanel" class="upload-progress-panel hidden">
+                <div class="progress-info-row">
+                  <span id="uploadStatusText">Uploading chunk 1/10...</span>
+                  <span id="uploadPercentage">0%</span>
+                </div>
+                <div class="progress-bar-track">
+                  <div class="progress-bar-fill" id="uploadProgressBar" style="width: 0%"></div>
+                </div>
+                <div class="upload-metrics-row">
+                  <span id="uploadSpeed">0.0 MB/s</span>
+                  <span id="uploadHashNotice">SHA-256 verifying & RSA-4096 signing on completion</span>
+                </div>
+              </div>
+
+              <div id="updateAlert" class="alert-box hidden"></div>
+
+              <div class="form-actions">
+                <button type="submit" id="publishSubmitBtn" class="btn btn-primary btn-lg">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10M17 7l-5-5-5 5M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+                  <span>Publish Cryptographic Update</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Existing Published Updates Card -->
+          <div class="card updates-history-card">
+            <div class="card-header-clean">
+              <div class="card-title-group">
+                <h3>Published Updates</h3>
+                <p>History of cryptographic versions pushed to clients</p>
+              </div>
+            </div>
+            <div class="table-container">
+              <table class="data-table" id="updatesTable">
+                <thead>
+                  <tr>
+                    <th>Version</th>
+                    <th>Size</th>
+                    <th>SHA-256 Hash</th>
+                    <th>Target</th>
+                    <th>Created (UTC)</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="updatesTableBody">
+                  <tr>
+                    <td colspan="6" class="empty-state">No updates published yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: AUDIT STREAM -->
+      <section id="tab-audit" class="tab-pane hidden">
+        <div class="card audit-card">
+          <div class="card-header-clean">
+            <div class="card-title-group">
+              <h3>Live Security Audit Logs</h3>
+              <p>Cryptographic and administrative event trail recorded by Splash.Server</p>
+            </div>
+            <div class="audit-toolbar">
+              <label class="toggle-pill">
+                <input type="checkbox" id="autoRefreshAudit" checked>
+                <span>Live Stream (5s)</span>
+              </label>
+              <button id="refreshAuditBtn" class="btn btn-secondary btn-sm">Refresh Now</button>
+            </div>
+          </div>
+          <div class="audit-stream-container" id="auditStreamContainer">
+            <div class="empty-state">Loading audit trail...</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- GRANT ACCESS DURATION MODAL -->
+  <div id="grantModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Grant User Access</h3>
+        <button class="modal-close-btn" id="closeGrantModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Set license authorization and duration for user <strong id="grantTargetName" class="text-accent"></strong>:</p>
+        <div class="form-group">
+          <label>Access Duration</label>
+          <select id="modalDurationSelect" class="form-control">
+            <option value="0" selected>Permanent / Lifetime Access</option>
+            <option value="1">1 Hour (Trial)</option>
+            <option value="24">24 Hours (1 Day)</option>
+            <option value="72">72 Hours (3 Days)</option>
+            <option value="168">7 Days (1 Week)</option>
+            <option value="720">30 Days (1 Month)</option>
+            <option value="2160">90 Days (3 Months)</option>
+            <option value="8760">365 Days (1 Year)</option>
+          </select>
+        </div>
+        <div class="modal-meta-notice">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>Granting access immediately authorizes the client and creates a 90-second rolling cryptographic lease.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelGrantModal">Cancel</button>
+        <button class="btn btn-primary" id="confirmGrantModal">Confirm & Grant Access</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin/admin.js"></script>
+</body>
+</html>

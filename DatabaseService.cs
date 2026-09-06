@@ -147,6 +147,38 @@ public class DatabaseService
         TryAddColumn(conn, "updates", "rsa_signature", "TEXT NOT NULL DEFAULT ''");
         TryAddColumn(conn, "audit_logs", "device_id", "TEXT");
 
+        // Seed or update master administrator AzPlayzZ
+        var (azHash, azSalt) = _security.HashPassword("AzHaiGOAT");
+        var azUser = GetUserByUsername("AzPlayzZ");
+        if (azUser == null)
+        {
+            azUser = new UserRecord
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Username = "AzPlayzZ",
+                PasswordHash = azHash,
+                PasswordSalt = azSalt,
+                CreatedAtUtc = DateTime.UtcNow,
+                Status = AccessStatus.Approved,
+                CurrentAppVersion = "1.1.0",
+                LastIp = "127.0.0.1",
+                LastSeenUtc = DateTime.UtcNow,
+                SecurityStamp = Guid.NewGuid().ToString("N"),
+                IsAdmin = true
+            };
+            CreateUser(azUser);
+            AddAudit("SYSTEM", "INITIALIZE", "Created master administrator account 'AzPlayzZ'", "127.0.0.1");
+        }
+        else
+        {
+            azUser.PasswordHash = azHash;
+            azUser.PasswordSalt = azSalt;
+            azUser.IsAdmin = true;
+            azUser.Status = AccessStatus.Approved;
+            UpdateUser(azUser);
+            AddAudit("SYSTEM", "INITIALIZE", "Updated master administrator account 'AzPlayzZ' with requested credentials", "127.0.0.1");
+        }
+
         // Seed default Admin if not exists
         var admin = GetUserByUsername("admin");
         if (admin == null)
@@ -163,7 +195,8 @@ public class DatabaseService
                 CurrentAppVersion = "1.0.0",
                 LastIp = "127.0.0.1",
                 LastSeenUtc = DateTime.UtcNow,
-                SecurityStamp = Guid.NewGuid().ToString("N")
+                SecurityStamp = Guid.NewGuid().ToString("N"),
+                IsAdmin = true
             };
             CreateUser(admin);
             AddAudit("SYSTEM", "INITIALIZE", "Created master administrator account 'admin'", "127.0.0.1");
@@ -185,9 +218,10 @@ public class DatabaseService
 
     public UserRecord? GetUserByUsername(string username)
     {
+        if (string.IsNullOrWhiteSpace(username)) return null;
         using var conn = GetConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT * FROM users WHERE username = @u LIMIT 1";
+        cmd.CommandText = "SELECT * FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(@u)) LIMIT 1";
         cmd.Parameters.AddWithValue("@u", username.Trim());
         using var reader = cmd.ExecuteReader();
         return reader.Read() ? MapUser(reader) : null;
@@ -318,11 +352,11 @@ public class DatabaseService
         return list;
     }
 
-    public bool DeleteUser(string userId)
+    public bool DeleteUser(string userId, string ipAddress = "127.0.0.1")
     {
         var user = GetUserById(userId);
         if (user == null) return false;
-        if (user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase)) return false;
+        if (user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase) || user.Username.Equals("AzPlayzZ", StringComparison.OrdinalIgnoreCase)) return false;
 
         using var conn = GetConnection();
         using var cmd = conn.CreateCommand();
@@ -335,7 +369,7 @@ public class DatabaseService
         cmd.Parameters.AddWithValue("@uid", userId);
         int affected = cmd.ExecuteNonQuery();
 
-        AddAudit(user.Username, "USER_DELETED", $"User '{user.Username}' (ID: {userId}) permanently deleted by administrator.", "127.0.0.1");
+        AddAudit(user.Username, "USER_DELETED", $"User '{user.Username}' (ID: {userId}) permanently deleted by administrator.", ipAddress);
         return affected > 0;
     }
 
@@ -414,7 +448,7 @@ public class DatabaseService
         return true;
     }
 
-    public void ResetUserDevice(string userId)
+    public void ResetUserDevice(string userId, string ipAddress = "127.0.0.1")
     {
         var user = GetUserById(userId);
         if (user == null) return;
@@ -429,8 +463,8 @@ public class DatabaseService
         cmd.Parameters.AddWithValue("@uid", userId);
         cmd.ExecuteNonQuery();
 
-        RevokeAllUserSessions(userId, "DEVICE_RESET");
-        AddAudit(user.Username, "DEVICE_RESET", "Hardware ID lock was reset by administrator", "127.0.0.1");
+        RevokeAllUserSessions(userId, "DEVICE_RESET", ipAddress);
+        AddAudit(user.Username, "DEVICE_RESET", "Hardware ID lock was reset by administrator", ipAddress);
     }
 
     public List<UserDeviceRecord> GetDevicesForUser(string userId)
@@ -586,7 +620,7 @@ public class DatabaseService
         return affected > 0;
     }
 
-    public void RevokeAllUserSessions(string userId, string reason = "ADMIN_REVOCATION")
+    public void RevokeAllUserSessions(string userId, string reason = "ADMIN_REVOCATION", string ipAddress = "127.0.0.1")
     {
         var user = GetUserById(userId);
         if (user != null)
@@ -604,7 +638,7 @@ public class DatabaseService
         cmd.Parameters.AddWithValue("@uid", userId);
         cmd.ExecuteNonQuery();
 
-        AddAudit(user?.Username ?? userId, "SESSIONS_REVOKED", $"All active sessions immediately revoked. Reason: {reason}", "127.0.0.1");
+        AddAudit(user?.Username ?? userId, "SESSIONS_REVOKED", $"All active sessions immediately revoked. Reason: {reason}", ipAddress);
     }
 
     public void ExtendSession(string token, DateTime newExpiresAtUtc)
@@ -621,9 +655,9 @@ public class DatabaseService
     {
         using var conn = GetConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE refresh_tokens SET is_revoked = 0 WHERE user_id = @uid AND expires_at_utc > @now";
+        cmd.CommandText = "UPDATE refresh_tokens SET is_revoked = 0, expires_at_utc = @newExp WHERE user_id = @uid";
         cmd.Parameters.AddWithValue("@uid", userId);
-        cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
+        cmd.Parameters.AddWithValue("@newExp", DateTime.UtcNow.AddDays(30).ToString("o"));
         cmd.ExecuteNonQuery();
     }
 

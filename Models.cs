@@ -41,6 +41,7 @@ public class UserRecord
     public string? DeviceLockId { get; set; }
     public int FailedLoginCount { get; set; }
     public DateTime? LockoutUntilUtc { get; set; }
+    public bool IsAdmin { get; set; }
 }
 
 public class UserDeviceRecord
@@ -138,6 +139,6 @@ public record ReportStatusRequest(string UpdateId, string Status, string? ErrorM
 public record UserAccessRequest(string Status, DateTime? AccessStartUtc, DateTime? AccessEndUtc, string? ScheduledAction, DateTime? ScheduledTimeUtc);
 public record ChangeUsernameRequest(string NewUsername, string CurrentPassword);
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword, string ConfirmNewPassword);
-public record GrantByUsernameRequest(string Username, double? DurationHours);
+public record GrantByUsernameRequest(string Username, double? DurationHours, string? InitialPassword = null);
 public record FinalizeUpdateRequest(string UploadId, string FileName, string Version, string? ReleaseNotes, string TargetType, string? TargetUserId, string? TargetUsername, bool IsMandatory, string ExpectedSha256, long TotalSizeBytes);
 

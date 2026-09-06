@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Splash • Undetected Minecraft Combat Companion & Key Profiler</title>
+  <meta name="description" content="Splash is the premier undetectable macro and input automation companion for Minecraft. Featuring 120 FPS hardware pacing, real-time client auto-detection, sub-millisecond anchor combos, and zero memory injection.">
+
+  <!-- Open Graph / Meta -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Splash • Minecraft Combat Companion">
+  <meta property="og:description" content="Ring-3 undetectable combat macro software for Minecraft. Hardware-paced 120 FPS engine with sub-millisecond anchor blasts and instant client auto-detection.">
+  <meta property="og:image" content="assets/images/crown_logo.png">
+  <meta name="theme-color" content="#0088FF">
+
+  <!-- Favicon using exact original crown logo -->
+  <link rel="icon" type="image/png" href="assets/images/crown_logo.png">
+  <link rel="apple-touch-icon" href="assets/images/crown_logo.png">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* Splash-Specific Enhanced Styling */
+    .why-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-top: 40px;
+    }
+    .why-card {
+      background: linear-gradient(180deg, rgba(13, 27, 42, 0.7) 0%, rgba(6, 11, 24, 0.9) 100%);
+      border: 1px solid rgba(0, 136, 255, 0.2);
+      border-radius: 14px;
+      padding: 32px 24px;
+      position: relative;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow: hidden;
+    }
+    .why-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #0088FF, transparent);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .why-card:hover {
+      border-color: rgba(0, 136, 255, 0.5);
+      transform: translateY(-6px);
+      box-shadow: 0 16px 36px rgba(0, 136, 255, 0.12);
+    }
+    .why-card:hover::before {
+      opacity: 1;
+    }
+    .why-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      background: rgba(0, 136, 255, 0.1);
+      border: 1px solid rgba(0, 136, 255, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #0088FF;
+      margin-bottom: 20px;
+    }
+    .why-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #F1F5F9;
+      margin-bottom: 12px;
+    }
+    .why-desc {
+      color: #94A3B8;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+    .video-useful-box {
+      margin-top: 14px;
+      padding: 10px 14px;
+      background: rgba(0, 136, 255, 0.08);
+      border-left: 3px solid #0088FF;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.82rem;
+      color: #94A3B8;
+      line-height: 1.5;
+    }
+    .video-useful-box strong {
+      color: #38BDF8;
+      display: block;
+      margin-bottom: 2px;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .clients-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 18px;
+      margin-top: 36px;
+    }
+    @media (max-width: 1080px) {
+      .clients-grid {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+    @media (max-width: 640px) {
+      .clients-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    .client-card {
+      background: rgba(10, 20, 34, 0.6);
+      border: 1px solid rgba(27, 58, 92, 0.7);
+      border-radius: 12px;
+      padding: 20px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .client-card:hover {
+      border-color: #0088FF;
+      transform: translateY(-4px);
+      box-shadow: 0 10px 24px rgba(0, 136, 255, 0.2);
+      background: rgba(15, 36, 64, 0.85);
+    }
+    .client-logo-img {
+      width: 56px;
+      height: 56px;
+      object-fit: contain;
+      margin-bottom: 12px;
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+      transition: transform 0.3s ease;
+    }
+    .client-card:hover .client-logo-img {
+      transform: scale(1.1);
+    }
+    .client-name {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #F1F5F9;
+    }
+    .client-status {
+      font-size: 0.72rem;
+      color: #22C55E;
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .client-status::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #22C55E;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient Background Grids & 3D Interactive Particle Canvas -->
+  <div class="bg-mesh" aria-hidden="true"></div>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <canvas id="bg-canvas" class="bg-canvas" aria-hidden="true"></canvas>
+
+  <!-- Floating Glass Capsule Navigation (Matching Reference) -->
+  <header class="navbar-pill">
+    <a href="#" class="nav-pill-brand" title="Splash Macro Companion">
+      <img src="assets/images/crown_logo.png" alt="Splash Crown Logo" class="brand-crown">
+      <span class="brand-name">Splash</span>
+    </a>
+
+    <nav class="nav-pill-menu">
+      <a href="#features" class="nav-pill-link">Overview</a>
+      <a href="#showcase" class="nav-pill-link">Showcase</a>
+      <a href="#clients" class="nav-pill-link">Clients</a>
+      <a href="#pricing" class="nav-pill-link">Pricing</a>
+      <a href="#faq" class="nav-pill-link">FAQ</a>
+    </nav>
+
+    <div class="nav-pill-actions">
+      <a href="/auth" class="nav-pill-login">Log In</a>
+      <a href="#pricing" class="nav-pill-btn">Get Access</a>
+      <button class="mobile-toggle" aria-label="Toggle navigation menu">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Drawer -->
+  <div class="mobile-drawer">
+    <a href="#features">Overview</a>
+    <a href="#showcase">Combat Showcase</a>
+    <a href="#clients">Supported Clients</a>
+    <a href="#pricing">Pricing Plans</a>
+    <a href="#faq">FAQ</a>
+    <a href="/auth" style="color: #60A5FA;">Log In</a>
+    <a href="#pricing" class="btn btn-primary" style="margin-top: 10px;">Get Access</a>
+  </div>
+
+  <main>
+    <!-- HERO SECTION -->
+    <section class="hero" id="hero">
+      <div class="hero-glow-orb" aria-hidden="true"></div>
+      <div class="hero-float-orb orb-1" aria-hidden="true"></div>
+      <div class="hero-float-orb orb-2" aria-hidden="true"></div>
+      
+      <div class="container hero-content">
+        <div class="hero-badge-wrap">
+          <div class="hero-badge img-reveal">
+            <img src="assets/images/crown_logo.png" alt="Crown" class="crown-mini">
+            <span>Best Macro Software</span>
+          </div>
+        </div>
+
+        <h1 class="hero-title img-reveal">
+          <span class="gradient-text">Splash</span><br>
+          <span class="accent-text">Minecraft Best Undetected Macro</span>
+        </h1>
+
+        <p class="hero-subtitle img-reveal">
+          Custom profiles, responsive timing, and lightweight performance — all in one premium experience.
+        </p>
+
+        <div class="hero-cta-group img-reveal">
+          <a href="#pricing" class="btn btn-primary btn-lg">
+            <span>Get Splash — $4.99 / mo</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M5 12h14"></path>
+              <path d="M12 5l7 7-7 7"></path>
+            </svg>
+          </a>
+          <a href="#showcase" class="btn btn-secondary btn-lg">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <span>Watch In Action</span>
+          </a>
+        </div>
+
+        <!-- Metric Badges -->
+        <div class="hero-metrics">
+          <div class="metric-card img-reveal">
+            <span class="metric-value">120 FPS</span>
+            <span class="metric-label">Hardware Frame Pacing</span>
+          </div>
+          <div class="metric-card img-reveal">
+            <span class="metric-value">&lt; 1 ms</span>
+            <span class="metric-label">Input Dispatch Latency</span>
+          </div>
+          <div class="metric-card img-reveal">
+            <span class="metric-value">100%</span>
+            <span class="metric-label">Client Compatibility</span>
+          </div>
+          <div class="metric-card img-reveal">
+            <span class="metric-value">0</span>
+            <span class="metric-label">Memory Injections</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hero Preview Mockup in Dedicated Centered Responsive Container -->
+      <div class="container hero-preview-container">
+        <div class="hero-preview-frame img-reveal">
+          <div class="hero-preview-header">
+            <div class="window-dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            <div class="window-title-box">
+              <img src="assets/images/crown_logo.png" alt="Crown" class="window-crown-icon">
+              <span class="window-title">Splash — Minecraft configuration</span>
+            </div>
+            <div class="window-badge">Hardware Engine Active</div>
+          </div>
+          <div class="hero-preview-body">
+            <img src="assets/images/gui_preview.png" alt="Splash Application Interface" class="hero-preview-img img-animated">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CORE FEATURES SECTION -->
+    <section class="features-section" id="features">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">
+            <img src="assets/images/crown_logo.png" alt="">
+            <span>Architectural Superiority</span>
+          </div>
+          <h2 class="section-title">Engineered for <span class="accent-text">Total Dominance</span></h2>
+          <p class="section-desc">
+            Splash delivers surgical input automation without touching game memory. Every keystroke, click, and slot swap is simulated at native hardware speeds.
+          </p>
+        </div>
+
+        <div class="features-grid">
+          <!-- Feature 1 -->
+          <div class="card feature-card">
+            <div class="feature-icon-box">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg>
+            </div>
+            <h3 class="feature-title">Zero Memory Injection</h3>
+            <p class="feature-desc">
+              Operates strictly in Ring-3 user space. No DLL injection, no process handle opening, and no internal byte modifications. Completely undetectable by server-side anticheats.
+            </p>
+          </div>
+
+          <!-- Feature 2 -->
+          <div class="card feature-card">
+            <div class="feature-icon-box">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </div>
+            <h3 class="feature-title">120 FPS High-Refresh Engine</h3>
+            <p class="feature-desc">
+              Synchronized to Windows multimedia high-resolution timer queues. Guarantees sub-millisecond execution without the micro-stutter typical of standard macro tools.
+            </p>
+          </div>
+
+          <!-- Feature 3 -->
+          <div class="card feature-card">
+            <div class="feature-icon-box">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+            </div>
+            <h3 class="feature-title">Real-Time Client Hook</h3>
+            <p class="feature-desc">
+              Autonomously scans active process windows to identify Lunar, Badlion, Feather, CurseForge, Modrinth, Prism, and ATLauncher, dynamically activating tailored key profiles.
+            </p>
+          </div>
+
+          <!-- Feature 4 -->
+          <div class="card feature-card">
+            <div class="feature-icon-box">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+            </div>
+            <h3 class="feature-title">Slot Switch & Hold Engine</h3>
+            <p class="feature-desc">
+              Four sequence channels with 8 discrete outputs each. Configure weapon swaps, pearl tosses, crystal placements, and block hold modes with microsecond precision.
+            </p>
+          </div>
+
+          <!-- Feature 5 -->
+          <div class="card feature-card">
+            <div class="feature-icon-box">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </div>
+            <h3 class="feature-title">Procedural Background Patterns</h3>
+            <p class="feature-desc">
+              7 selectable procedural canvas patterns (Subtle Grid, Flowing Lines, Soft Geometric, Cyber Dots, Deep Waves, Technical Mesh, Minimal Abstract) dynamically tinted to your electric blue #0088FF accent.
+            </p>
+          </div>
+
+          <!-- Feature 6 -->
+          <div class="card feature-card">
+            <div class="feature-icon-box">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </div>
+            <h3 class="feature-title">Silent Tray & Auto-Updater</h3>
+            <p class="feature-desc">
+              Background update engine with SHA-256 binary validation and RSA-4096 signatures. Minimizes to the Windows notification tray with instant RAM reclamation down to ~20MB.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+
+    <!-- COMBAT VIDEO SHOWCASE SECTION -->
+    <section class="showcase-section" id="showcase">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">
+            <img src="assets/images/crown_logo.png" alt="">
+            <span>High-Definition Highlights</span>
+          </div>
+          <h2 class="section-title">Watch the Combat <span class="accent-text">In Real Action</span></h2>
+          <p class="section-desc">
+            Directly captured gameplay footage demonstrating Auto StunSlam, Auto InstaCart, and Auto Crystal &amp; Anchor execution.
+          </p>
+        </div>
+
+        <!-- Video Cards Grid -->
+        <div class="video-grid">
+          <!-- Video 1: Auto StunSlam & SpearSwap -->
+          <div class="card video-card" data-category="combat">
+            <div class="video-thumbnail-wrap" onclick="openVideoModal('assets/videos/autostun_slam.mp4', 'Auto StunSlam &amp; SpearSwap')">
+              <img src="assets/videos/autostun_slam_poster.jpg" alt="Auto StunSlam &amp; SpearSwap">
+              <span class="video-badge-type">Auto StunSlam</span>
+              <span class="video-badge-duration">0:05</span>
+              <div class="video-play-overlay">
+                <div class="play-circle">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div class="video-info">
+              <h3 class="video-title">Auto StunSlam &amp; SpearSwap</h3>
+            </div>
+          </div>
+
+          <!-- Video 2: Auto InstaCart -->
+          <div class="card video-card" data-category="combat">
+            <div class="video-thumbnail-wrap" onclick="openVideoModal('assets/videos/cart_bomb_hit.mp4', 'Auto InstaCart')">
+              <img src="assets/videos/cart_bomb_hit_poster.jpg" alt="Auto InstaCart">
+              <span class="video-badge-type">InstaCart</span>
+              <span class="video-badge-duration">0:05</span>
+              <div class="video-play-overlay">
+                <div class="play-circle">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div class="video-info">
+              <h3 class="video-title">Auto InstaCart</h3>
+            </div>
+          </div>
+
+          <!-- Video 3: Auto Crystal & Anchor -->
+          <div class="card video-card" data-category="combat">
+            <div class="video-thumbnail-wrap" onclick="openVideoModal('assets/videos/anchor_blast_clutch.mp4', 'Auto Crystal &amp; Anchor')">
+              <img src="assets/videos/anchor_blast_clutch_poster.jpg" alt="Auto Crystal &amp; Anchor">
+              <span class="video-badge-type">Crystal &amp; Anchor</span>
+              <span class="video-badge-duration">0:08</span>
+              <div class="video-play-overlay">
+                <div class="play-circle">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div class="video-info">
+              <h3 class="video-title">Auto Crystal &amp; Anchor</h3>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- OFFICIAL CLIENT COMPATIBILITY SECTION -->
+    <section class="clients-section" id="clients" style="padding: 90px 0; background: rgba(6, 11, 24, 0.8);">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">
+            <img src="assets/images/crown_logo.png" alt="">
+            <span>100% Official Compatibility</span>
+          </div>
+          <h2 class="section-title">Supports Your <span class="accent-text">Favorite Launcher</span></h2>
+          <p class="section-desc">
+            Splash automatically detects, identifies, and synchronizes with every major Minecraft launcher and client on launch. No mods or manual hooks required.
+          </p>
+        </div>
+
+        <div class="clients-grid">
+          <!-- 1. Lunar Client -->
+          <a href="https://www.lunarclient.com/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open Lunar Client Official Website">
+            <img src="assets/clients/lunar.png" alt="Lunar Client Official Logo" class="client-logo-img">
+            <span class="client-name">Lunar Client</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 2. Badlion Client -->
+          <a href="https://client.badlion.net/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open Badlion Client Official Website">
+            <img src="assets/clients/badlion.png" alt="Badlion Client Official Logo" class="client-logo-img">
+            <span class="client-name">Badlion Client</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 3. Feather Client -->
+          <a href="https://feathermc.com/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open Feather Client Official Website">
+            <img src="assets/clients/feather.png" alt="Feather Client Official Logo" class="client-logo-img">
+            <span class="client-name">Feather Client</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 4. LabyMod -->
+          <a href="https://labymod.net/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open LabyMod Official Website">
+            <img src="assets/clients/labymod.png" alt="LabyMod Official Logo" class="client-logo-img">
+            <span class="client-name">LabyMod</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 5. Modrinth App -->
+          <a href="https://modrinth.com/app" target="_blank" rel="noopener noreferrer" class="client-card" title="Open Modrinth App Official Website">
+            <img src="assets/clients/modrinth.png" alt="Modrinth Official Logo" class="client-logo-img">
+            <span class="client-name">Modrinth App</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 6. CurseForge -->
+          <a href="https://www.curseforge.com/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open CurseForge Official Website">
+            <img src="assets/clients/curseforge.png" alt="CurseForge Official Logo" class="client-logo-img">
+            <span class="client-name">CurseForge</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 7. Prism Launcher -->
+          <a href="https://prismlauncher.org/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open Prism Launcher Official Website">
+            <img src="assets/clients/prism.png" alt="Prism Launcher Official Logo" class="client-logo-img">
+            <span class="client-name">Prism Launcher</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 8. MultiMC -->
+          <a href="https://multimc.org/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open MultiMC Official Website">
+            <img src="assets/clients/multimc.png" alt="MultiMC Official Logo" class="client-logo-img">
+            <span class="client-name">MultiMC</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 9. ATLauncher -->
+          <a href="https://atlauncher.com/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open ATLauncher Official Website">
+            <img src="assets/clients/atlauncher.png" alt="ATLauncher Official Logo" class="client-logo-img">
+            <span class="client-name">ATLauncher</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 10. OneClient -->
+          <a href="https://oneclient.gg/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open OneClient Official Website">
+            <img src="assets/clients/oneclient.png" alt="OneClient Official Logo" class="client-logo-img">
+            <span class="client-name">OneClient</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 11. Dawn Client -->
+          <a href="https://dawnclient.net/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open Dawn Client Official Website">
+            <img src="assets/clients/dawn.png" alt="Dawn Client Official Logo" class="client-logo-img">
+            <span class="client-name">Dawn Client</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+
+          <!-- 12. Minecraft Official -->
+          <a href="https://www.minecraft.net/" target="_blank" rel="noopener noreferrer" class="client-card" title="Open Minecraft Official Website">
+            <img src="assets/clients/minecraft.png" alt="Minecraft Official Launcher Logo" class="client-logo-img">
+            <span class="client-name">Minecraft Launcher</span>
+            <span class="client-status">Verified Auto-Hook</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- INTERACTIVE GUI EXPLORER -->
+    <section class="explorer-section" id="explorer">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">
+            <img src="assets/images/crown_logo.png" alt="">
+            <span>Interactive Software Tour</span>
+          </div>
+          <h2 class="section-title">Explore the <span class="accent-text">Splash Interface</span></h2>
+          <p class="section-desc">
+            Take a hands-on look at the desktop application. Switch between feature tabs to inspect how profiles, auto-clickers, slot switchers, patterns, and clients work together.
+          </p>
+        </div>
+
+        <div class="explorer-tabs-container">
+          <div class="explorer-tabs-nav">
+            <button class="explorer-tab active" data-key="profiles">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+              </svg>
+              <span>Profiles & Macros</span>
+            </button>
+            <button class="explorer-tab" data-key="click">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <span>Auto Clicker</span>
+            </button>
+            <button class="explorer-tab" data-key="switch">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 3 21 3 21 8"></polyline>
+                <line x1="4" y1="20" x2="21" y2="3"></line>
+                <polyline points="21 16 21 21 16 21"></polyline>
+                <line x1="15" y1="15" x2="21" y2="21"></line>
+                <line x1="4" y1="4" x2="9" y2="9"></line>
+              </svg>
+              <span>Slot Switch</span>
+            </button>
+          </div>
+
+          <div class="card explorer-display-card">
+            <div class="explorer-media-frame">
+              <img src="assets/images/preview_profiles_latest.png" alt="Profiles Setup Preview" class="explorer-img-active" onerror="this.onerror=null; this.src='assets/images/gui_preview.png';">
+            </div>
+            <div class="explorer-info-panel">
+              <h3 class="explorer-title">Profiles & Slot Macro Engine</h3>
+              <p class="explorer-description">
+                Create and organize dedicated profiles for various game modes. Each profile contains customized macro slots, trigger keys, and multi-action key bindings with microsecond delay accuracy.
+              </p>
+              <div class="explorer-features-list">
+                <span class="explorer-chip">Multi-Profile Management</span>
+                <span class="explorer-chip">Microsecond Precision</span>
+                <span class="explorer-chip">Trigger Key Capture</span>
+                <span class="explorer-chip">Action Sequences</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRICING SECTION (STRICTLY $4.99 / MO & $14.99 PERMANENT) -->
+    <section class="pricing-section" id="pricing">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">
+            <img src="assets/images/crown_logo.png" alt="">
+            <span>Transparent Licensing</span>
+          </div>
+          <h2 class="section-title">Choose Your <span class="accent-text">Dominance Plan</span></h2>
+          <p class="section-desc">
+            Instant automatic delivery immediately upon checkout. Unrestricted feature access on all plans with zero hidden fees.
+          </p>
+        </div>
+
+        <div class="pricing-grid">
+          <!-- Dynamically populated from siteConfig.pricing in main.js -->
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ SECTION -->
+    <section class="faq-section" id="faq">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">
+            <img src="assets/images/crown_logo.png" alt="">
+            <span>Frequently Asked Questions</span>
+          </div>
+          <h2 class="section-title">Everything You <span class="accent-text">Need to Know</span></h2>
+          <p class="section-desc">
+            Have questions regarding compatibility, anticheat safety, or installation? We have answers.
+          </p>
+        </div>
+
+        <div class="faq-accordion">
+          <div class="card faq-item">
+            <button class="faq-question">
+              <span>Is Splash truly undetectable on Minecraft servers?</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Yes. Splash operates completely external to Minecraft in Ring-3 user space. It never injects DLLs, alters JVM bytecode, or inspects process memory. All inputs are emitted as legitimate Windows input events with humanized jitter options, making it invisible to server-side anticheats and screenshares.
+              </p>
+            </div>
+          </div>
+
+          <div class="card faq-item">
+            <button class="faq-question">
+              <span>How does the Anchor Blast feature work?</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="faq-answer">
+              <p>
+                The Anchor Blast module synchronizes slot selection, placement, and detonation with sub-millisecond precision. By assigning a single keybind, Splash rapidly sequences hotbar switching to your anchor, loading glowstone, and detonating, delivering explosive damage before your opponent can raise a shield.
+              </p>
+            </div>
+          </div>
+
+          <div class="card faq-item">
+            <button class="faq-question">
+              <span>Which Minecraft launchers are supported?</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Splash features automatic detection for Lunar Client, Badlion Client, Feather Client, CurseForge, Modrinth App, Prism Launcher, ATLauncher, Dawn Client, and the official Minecraft Launcher.
+              </p>
+            </div>
+          </div>
+
+          <div class="card faq-item">
+            <button class="faq-question">
+              <span>Can I transfer my license to a new PC?</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Yes! Your license includes hardware migration support. If you upgrade your PC or motherboard, simply access the Web Admin Control Panel or reach out to support on Discord for an instant HWID reset.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container footer-content">
+      <div class="footer-top">
+        <div class="footer-brand-col">
+          <div class="nav-brand">
+            <img src="assets/images/crown_logo.png" alt="Splash Crown Logo" class="brand-crown">
+            <span class="brand-name">Splash</span>
+          </div>
+          <p class="footer-desc">
+            The next generation of high-precision Minecraft combat automation. Hardware-paced, zero memory injection, and completely undetectable.
+          </p>
+        </div>
+
+        <div class="footer-links-col">
+          <h4 class="footer-title">Navigation</h4>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#why-splash">Why Splash?</a></li>
+            <li><a href="#showcase">Combat Showcase</a></li>
+            <li><a href="#clients">Supported Clients</a></li>
+            <li><a href="#pricing">Pricing Plans</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links-col">
+          <h4 class="footer-title">Software</h4>
+          <ul>
+            <li><a href="#explorer">GUI Explorer</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="#pricing">Purchase License</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links-col">
+          <h4 class="footer-title">System Status</h4>
+          <div class="footer-status-pill">
+            <span class="status-dot"></span>
+            <span>All Systems Operational</span>
+          </div>
+          <p style="font-size: 0.8rem; color: #64748B; margin-top: 8px;">
+            Cryptographic Licensing Server: Active (Port 5050)
+          </p>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; 2026 Splash Software. All rights reserved.</p>
+        <p>Not affiliated with Mojang Studios or Microsoft Corporation.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- VIDEO LIGHTBOX MODAL -->
+  <div class="video-modal-backdrop" aria-hidden="true">
+    <div class="video-modal-content">
+      <div class="video-modal-header">
+        <span class="modal-title">Combat Showcase</span>
+        <button class="modal-close-btn" aria-label="Close video player">&times;</button>
+      </div>
+      <div class="video-modal-body">
+        <div class="video-loader-overlay hidden" id="videoLoaderOverlay">
+          <div class="video-loader-spinner"></div>
+          <span class="video-loader-text">BUFFERING STREAM...</span>
+        </div>
+        <video id="modalVideo" controls playsinline preload="auto">
+          Your browser does not support the video tag.
+        </video>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Scripts -->
+  <script src="js/main.js"></script>
+</body>
+</html>

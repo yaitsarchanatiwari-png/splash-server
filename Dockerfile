@@ -1,4 +1,4 @@
-﻿FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 COPY Java.Server.csproj .
 RUN dotnet restore
@@ -11,8 +11,7 @@ COPY --from=build /app/publish .
 
 VOLUME ["/app/data"]
 
-ENV ASPNETCORE_URLS=http://0.0.0.0:5050
-ENV PORT=5050
 EXPOSE 5050
+EXPOSE 10000
 
-ENTRYPOINT ["dotnet", "Java.Server.dll"]
+ENTRYPOINT ["dotnet", "Splash.Server.dll"]
