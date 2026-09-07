@@ -8,6 +8,7 @@ RUN dotnet publish "Java.Server.csproj" -c Release -o /app/publish
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
+COPY --from=build /src/wwwroot /app/wwwroot
 COPY --from=build /src/data /app/data
 
 VOLUME ["/app/data"]

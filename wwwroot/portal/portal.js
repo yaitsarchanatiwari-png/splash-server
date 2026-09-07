@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const topDownloadText = document.getElementById('top-download-text');
 
   const pageSubtitle = document.getElementById('page-subtitle');
+  const accessCard = document.getElementById('access-card');
   const cardStatusPill = document.getElementById('card-status-pill');
   const cardStatusLabel = document.getElementById('card-status-label');
   const heroDuration = document.getElementById('hero-duration');
@@ -145,7 +146,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update UI based on access state
     if (hasActiveAccess) {
-      // APPROVED & ACTIVE
+      // APPROVED & ACTIVE: Show Card & Download Button
+      if (accessCard) accessCard.style.display = 'block';
+      if (btnTopDownload) btnTopDownload.style.display = 'inline-flex';
+      if (waitingCard) waitingCard.style.display = 'none';
+
       cardStatusPill.className = 'card-status-badge';
       cardStatusLabel.textContent = 'Active';
       metricStatus.className = 'metric-col-value status-text';
@@ -153,9 +158,6 @@ document.addEventListener('DOMContentLoaded', () => {
       metricModules.textContent = '43 / 43 active';
       pageSubtitle.textContent = 'You have full module access — this is how long your client remains active';
 
-      if (waitingCard) waitingCard.style.display = 'none';
-
-      // Buttons Enabled
       btnMainDownload.disabled = false;
       btnTopDownload.disabled = false;
       mainDownloadText.textContent = 'Download Splash';
@@ -174,50 +176,35 @@ document.addEventListener('DOMContentLoaded', () => {
         renderRemainingFormatted();
       }
     } else if (user.status === 'PendingApproval') {
-      // PENDING APPROVAL
-      cardStatusPill.className = 'card-status-badge status-pending';
-      cardStatusLabel.textContent = 'Pending Approval';
-      metricStatus.className = 'metric-col-value status-pending';
-      metricStatus.textContent = 'Pending';
-      metricModules.textContent = 'Locked (0 / 43)';
-      metricExpires.textContent = 'Awaiting Grant';
-      heroDuration.textContent = 'Waiting';
-      heroDurationSub.textContent = 'Access is pending administrator authorization.';
-      pageSubtitle.textContent = 'Awaiting administrator approval — your client access will unlock once granted';
-
+      // PENDING APPROVAL: Keep Page Clean/Empty — No Card and No Download Button until Admin Grants Access
+      if (accessCard) accessCard.style.display = 'none';
+      if (btnTopDownload) btnTopDownload.style.display = 'none';
       if (waitingCard) waitingCard.style.display = 'flex';
 
-      // Buttons Disabled
-      btnMainDownload.disabled = true;
-      btnTopDownload.disabled = true;
-      mainDownloadText.textContent = 'Download Locked';
-      topDownloadText.textContent = 'Download locked';
+      pageSubtitle.textContent = 'Awaiting administrator approval — your client access and download will appear once granted';
     } else if (user.status === 'Expired') {
       // EXPIRED
-      cardStatusPill.className = 'card-status-badge status-expired';
-      cardStatusLabel.textContent = 'Expired';
-      metricStatus.className = 'metric-col-value status-expired';
-      metricStatus.textContent = 'Expired';
-      metricModules.textContent = 'Expired (0 / 43)';
-      metricExpires.textContent = 'Expired';
-      heroDuration.textContent = 'Expired';
-      heroDurationSub.textContent = 'Your license duration has ended. Please renew to resume access.';
+      if (accessCard) accessCard.style.display = 'none';
+      if (btnTopDownload) btnTopDownload.style.display = 'none';
+      if (waitingCard) {
+        waitingCard.style.display = 'flex';
+        const title = waitingCard.querySelector('.waiting-title');
+        if (title) title.textContent = 'Access License Expired';
+        const desc = waitingCard.querySelector('.waiting-desc');
+        if (desc) desc.textContent = 'Your subscription period has ended. Please renew to resume access.';
+      }
       pageSubtitle.textContent = 'Your access period has expired. Please contact an administrator or renew.';
-
-      if (waitingCard) waitingCard.style.display = 'none';
-
-      btnMainDownload.disabled = true;
-      btnTopDownload.disabled = true;
-      mainDownloadText.textContent = 'License Expired';
-      topDownloadText.textContent = 'License Expired';
     } else {
       // REVOKED OR SUSPENDED
-      cardStatusPill.className = 'card-status-badge status-expired';
-      cardStatusLabel.textContent = user.status || 'Revoked';
-      metricStatus.className = 'metric-col-value status-expired';
-      metricStatus.textContent = user.status || 'Revoked';
-      metricModules.textContent = 'Locked';
-      metricExpires.textContent = 'Revoked';
+      if (accessCard) accessCard.style.display = 'none';
+      if (btnTopDownload) btnTopDownload.style.display = 'none';
+      if (waitingCard) {
+        waitingCard.style.display = 'flex';
+        const title = waitingCard.querySelector('.waiting-title');
+        if (title) title.textContent = 'Access Locked';
+        const desc = waitingCard.querySelector('.waiting-desc');
+        if (desc) desc.textContent = `Account status is ${user.status || 'Revoked'}. Contact administrator.`;
+      }
       heroDuration.textContent = 'Revoked';
       heroDurationSub.textContent = 'Your client access has been revoked by an administrator.';
       pageSubtitle.textContent = 'Your client access is currently revoked.';

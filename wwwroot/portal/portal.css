@@ -170,15 +170,15 @@ body.portal-body {
 }
 
 .nav-item.active {
-  background: rgba(0, 136, 255, 0.12);
-  color: #38BDF8;
-  border: 1px solid rgba(0, 136, 255, 0.35);
-  box-shadow: 0 4px 20px rgba(0, 136, 255, 0.12);
-  font-weight: 600;
+  background: #10B981;
+  color: #03111C;
+  border: 1px solid #34D399;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+  font-weight: 700;
 }
 
 .nav-item.active .nav-icon {
-  stroke: #38BDF8;
+  stroke: #03111C;
 }
 
 /* Sidebar Bottom Profile */
@@ -344,22 +344,22 @@ body.portal-body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #0088FF;
-  border: 1px solid rgba(56, 189, 248, 0.5);
+  background: #10B981;
+  border: 1px solid #34D399;
   border-radius: var(--radius-pill);
-  padding: 8px 20px;
-  color: #FFFFFF;
-  font-size: 0.86rem;
-  font-weight: 600;
+  padding: 10px 22px;
+  color: #03111C;
+  font-size: 0.88rem;
+  font-weight: 700;
   cursor: pointer;
   transition: var(--transition);
-  box-shadow: 0 4px 16px rgba(0, 136, 255, 0.35);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.45);
 }
 
 .btn-portal-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: #34D399;
+  box-shadow: 0 6px 26px rgba(16, 185, 129, 0.65);
   transform: translateY(-1px);
-  box-shadow: 0 6px 22px rgba(0, 136, 255, 0.5);
 }
 
 .btn-portal-primary:disabled {
@@ -385,7 +385,7 @@ body.portal-body {
 }
 
 .page-title {
-  font-size: 2rem;
+  font-size: 2.2rem;
   font-weight: 800;
   letter-spacing: -0.5px;
   color: var(--text-primary);
@@ -398,14 +398,15 @@ body.portal-body {
 
 /* HERO ACCESS CARD (Direct Reference Match) */
 .access-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
-  border-radius: var(--radius-lg);
+  background: #081414;
+  border: 1.5px solid rgba(16, 185, 129, 0.45);
+  border-radius: 18px;
   padding: 32px 36px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 0 30px rgba(0, 136, 255, 0.1);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 35px rgba(16, 185, 129, 0.18);
   position: relative;
   overflow: hidden;
   transition: var(--transition);
+  max-width: 560px;
 }
 
 .access-card::before {
@@ -415,7 +416,7 @@ body.portal-body {
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #0088FF, #38BDF8, transparent);
+  background: linear-gradient(90deg, transparent, #10B981, #34D399, transparent);
 }
 
 .card-header-bar {
@@ -428,8 +429,8 @@ body.portal-body {
 .card-brand-tag {
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  font-weight: 600;
-  color: #38BDF8;
+  font-weight: 700;
+  color: #10B981;
   letter-spacing: 1px;
 }
 
