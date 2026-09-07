@@ -1,0 +1,35 @@
+# Netlify Configuration for Splash Frontend
+# Backend API runs on Render → all /api/* and /auth/* calls are proxied there
+
+[build]
+  publish = "."
+
+# Proxy all backend API calls to Render (transparent, same-origin)
+[[redirects]]
+  from   = "/api/*"
+  to     = "https://splash-panel.onrender.com/api/:splat"
+  status = 200
+  force  = true
+
+[[redirects]]
+  from   = "/auth/*"
+  to     = "https://splash-panel.onrender.com/auth/:splat"
+  status = 200
+  force  = true
+
+# SPA fallback — portal and admin are subdirectory index.html pages
+[[redirects]]
+  from   = "/portal"
+  to     = "/portal/index.html"
+  status = 200
+
+[[redirects]]
+  from   = "/admin"
+  to     = "/admin/index.html"
+  status = 200
+
+# Catch-all SPA fallback
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
