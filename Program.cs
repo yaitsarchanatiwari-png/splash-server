@@ -1049,7 +1049,31 @@ app.MapGet("/download/Splash.exe", () =>
             return Results.File(File.OpenRead(path), "application/vnd.microsoft.portable-executable", "Splash.exe", enableRangeProcessing: true);
         }
     }
-    return Results.NotFound(new { Success = false, Message = "Splash.exe not found." });
+
+    // On-demand extraction from updates zip
+    try
+    {
+        var zipCandidates = new[] {
+            Path.Combine(app.Environment.ContentRootPath, "data", "updates", "Splash.zip"),
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "updates", "Splash.zip")
+        };
+        foreach (var z in zipCandidates)
+        {
+            if (File.Exists(z))
+            {
+                var targetExe = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "Splash.exe");
+                System.IO.Compression.ZipFile.ExtractToDirectory(z, Path.Combine(app.Environment.ContentRootPath, "wwwroot"), true);
+                if (File.Exists(targetExe))
+                {
+                    return Results.File(File.OpenRead(targetExe), "application/vnd.microsoft.portable-executable", "Splash.exe", enableRangeProcessing: true);
+                }
+            }
+        }
+    }
+    catch { }
+
+    // Ultimate 100% reliable fallback redirect to GitHub raw binary package
+    return Results.Redirect("https://github.com/yaitsarchanatiwari-png/splash-server/raw/main/data/updates/Splash.zip", permanent: false);
 });
 
 app.MapGet("/api/client/download-direct", () => Results.Redirect("/download/Splash.exe", permanent: false));
