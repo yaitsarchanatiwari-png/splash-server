@@ -95,6 +95,53 @@ document.addEventListener('DOMContentLoaded', () => {
           currentUser = data.user;
           localStorage.setItem('splash_user', JSON.stringify(currentUser));
           applyUserData(data);
+          return;
+        }
+      }
+
+      // Authoritative fallback: /api/auth/status is always active on server
+      if (res.status === 404) {
+        const fallbackRes = await fetch('/api/auth/status?_t=' + Date.now(), {
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'Cache-Control': 'no-cache'
+          },
+          cache: 'no-store'
+        });
+
+        if (fallbackRes.status === 401) {
+          localStorage.removeItem('splash_token');
+          localStorage.removeItem('splash_user');
+          window.location.href = '/auth#login';
+          return;
+        }
+
+        if (fallbackRes.ok) {
+          const st = await fallbackRes.json();
+          if (st && st.status) {
+            const cachedUser = JSON.parse(localStorage.getItem('splash_user') || '{}');
+            const hasActiveAccess = !!(st.hasActiveAccess || st.hasAccess || st.status === 'Approved');
+            const isPermanent = st.status === 'Approved' && !st.accessEndUtc;
+            let remSecs = 0;
+            if (st.accessEndUtc) {
+              const endMs = new Date(st.accessEndUtc).getTime();
+              const nowMs = st.serverTimeUtc ? new Date(st.serverTimeUtc).getTime() : Date.now();
+              remSecs = Math.max(0, Math.floor((endMs - nowMs) / 1000));
+            }
+            const synthUser = {
+              username: cachedUser.username || 'Member',
+              status: st.status,
+              hasActiveAccess: hasActiveAccess,
+              isPermanent: isPermanent,
+              remainingSeconds: remSecs,
+              accessEndUtc: st.accessEndUtc,
+              isAdmin: cachedUser.isAdmin || false,
+              createdAtUtc: cachedUser.createdAtUtc || null
+            };
+            currentUser = synthUser;
+            localStorage.setItem('splash_user', JSON.stringify(currentUser));
+            applyUserData({ success: true, user: synthUser });
+          }
         }
       }
     } catch (err) {

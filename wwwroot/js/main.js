@@ -429,6 +429,45 @@ async function initAuthNavbar() {
         const data = await res.json();
         if (data && data.success && data.user) {
           applyData(data);
+          return;
+        }
+      }
+
+      // Authoritative fallback: /api/auth/status
+      if (res.status === 404) {
+        const fallbackRes = await fetch(`/api/auth/status?_t=${Date.now()}`, {
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'Cache-Control': 'no-cache'
+          },
+          cache: 'no-store'
+        });
+        if (fallbackRes.status === 401) {
+          clearAuth();
+          return;
+        }
+        if (fallbackRes.ok) {
+          const st = await fallbackRes.json();
+          if (st && st.status) {
+            const cachedUser = JSON.parse(localStorage.getItem('splash_user') || '{}');
+            const hasActiveAccess = !!(st.hasActiveAccess || st.hasAccess || st.status === 'Approved');
+            const isPermanent = st.status === 'Approved' && !st.accessEndUtc;
+            let remSecs = 0;
+            if (st.accessEndUtc) {
+              const endMs = new Date(st.accessEndUtc).getTime();
+              const nowMs = st.serverTimeUtc ? new Date(st.serverTimeUtc).getTime() : Date.now();
+              remSecs = Math.max(0, Math.floor((endMs - nowMs) / 1000));
+            }
+            const synthUser = {
+              username: cachedUser.username || 'Player',
+              status: st.status,
+              hasActiveAccess: hasActiveAccess,
+              isPermanent: isPermanent,
+              remainingSeconds: remSecs,
+              accessEndUtc: st.accessEndUtc
+            };
+            applyData({ success: true, user: synthUser });
+          }
         }
       }
     } catch {}
