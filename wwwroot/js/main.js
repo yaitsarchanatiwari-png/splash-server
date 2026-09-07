@@ -110,7 +110,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initScrollAnimations();
 });
 
-// Real-time Authentication Sync for Main Navbar
+// Real-time Authentication & In-Page Download Section Sync
+let authPollTimer = null;
+let liveCountdownTimer = null;
+
 async function initAuthNavbar() {
   const token = localStorage.getItem('splash_token');
   const guestGroup = document.getElementById('nav-guest-actions');
@@ -118,68 +121,68 @@ async function initAuthNavbar() {
   const usernameEl = document.getElementById('nav-username');
   const dotEl = document.getElementById('nav-user-dot');
   const logoutBtn = document.getElementById('nav-btn-logout');
+  const navPillDownload = document.getElementById('nav-pill-download');
 
   const mobileGuest = document.getElementById('mobile-guest-actions');
   const mobileUser = document.getElementById('mobile-user-actions');
   const mobileUsernameEl = document.getElementById('mobile-nav-username');
   const mobileLogout = document.getElementById('mobile-nav-logout');
+  const mobileNavDownload = document.getElementById('mobile-nav-download');
 
-  if (!token) {
-    if (guestGroup) guestGroup.style.display = 'flex';
-    if (userGroup) userGroup.style.display = 'none';
-    if (mobileGuest) mobileGuest.style.display = 'block';
-    if (mobileUser) mobileUser.style.display = 'none';
-    return;
+  // Download section state containers
+  const stateGuest = document.getElementById('section-state-guest');
+  const statePending = document.getElementById('section-state-pending');
+  const stateApproved = document.getElementById('section-state-approved');
+  const pendingUsernameEl = document.getElementById('section-pending-username');
+
+  // Approved card fields
+  const heroDuration = document.getElementById('site-hero-duration');
+  const heroSub = document.getElementById('site-hero-sub');
+  const metricStatus = document.getElementById('site-metric-status');
+  const metricModules = document.getElementById('site-metric-modules');
+  const metricExpires = document.getElementById('site-metric-expires');
+  const metricUsername = document.getElementById('site-metric-username');
+  const downloadTitle = document.getElementById('site-download-title');
+  const downloadSub = document.getElementById('site-download-sub');
+  const btnTopDownload = document.getElementById('section-btn-top-download');
+  const btnMainDownload = document.getElementById('site-btn-main-download');
+  const btnCopyLauncher = document.getElementById('section-btn-copy-launcher');
+  const copyLauncherText = document.getElementById('section-copy-launcher-text');
+
+  let remainingSeconds = 0;
+  let isPermanent = false;
+  let hasActiveAccess = false;
+
+  // Win+R launcher copy helper
+  if (btnCopyLauncher && !btnCopyLauncher.dataset.bound) {
+    btnCopyLauncher.dataset.bound = "true";
+    btnCopyLauncher.addEventListener('click', async () => {
+      const command = 'powershell -c "Start-Process Splash.exe"';
+      try {
+        await navigator.clipboard.writeText(command);
+        if (copyLauncherText) copyLauncherText.textContent = "Copied to clipboard!";
+        setTimeout(() => {
+          if (copyLauncherText) copyLauncherText.textContent = "Copy Win+R launcher";
+        }, 2200);
+      } catch {
+        prompt("Copy launcher command:", command);
+      }
+    });
   }
 
-  try {
-    const cached = JSON.parse(localStorage.getItem('splash_user') || '{}');
-    if (cached && cached.username) {
-      if (usernameEl) usernameEl.textContent = cached.username;
-      if (mobileUsernameEl) mobileUsernameEl.textContent = cached.username;
-      if (guestGroup) guestGroup.style.display = 'none';
-      if (userGroup) userGroup.style.display = 'flex';
-      if (mobileGuest) mobileGuest.style.display = 'none';
-      if (mobileUser) mobileUser.style.display = 'flex';
-    }
-  } catch {}
-
-  try {
-    const res = await fetch('/api/auth/me', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && data.user) {
-        localStorage.setItem('splash_user', JSON.stringify(data.user));
-        const username = data.user.username;
-        if (usernameEl) usernameEl.textContent = username;
-        if (mobileUsernameEl) mobileUsernameEl.textContent = username;
-
-        if (dotEl) {
-          if (data.user.hasActiveAccess) {
-            dotEl.style.background = '#22C55E';
-            dotEl.style.boxShadow = '0 0 8px #22C55E';
-          } else if (data.user.status === 'PendingApproval') {
-            dotEl.style.background = '#F59E0B';
-            dotEl.style.boxShadow = '0 0 8px #F59E0B';
-          } else {
-            dotEl.style.background = '#EF4444';
-            dotEl.style.boxShadow = '0 0 8px #EF4444';
-          }
+  // Smooth scroll helper for #download links
+  document.querySelectorAll('a[href="#download"]').forEach(link => {
+    if (!link.dataset.smoothBound) {
+      link.dataset.smoothBound = "true";
+      link.addEventListener('click', (e) => {
+        const target = document.getElementById('download');
+        if (target) {
+          e.preventDefault();
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-
-        if (guestGroup) guestGroup.style.display = 'none';
-        if (userGroup) userGroup.style.display = 'flex';
-        if (mobileGuest) mobileGuest.style.display = 'none';
-        if (mobileUser) mobileUser.style.display = 'flex';
-      } else {
-        clearAuth();
-      }
-    } else if (res.status === 401) {
-      clearAuth();
+      });
     }
-  } catch {}
+  });
 
   function clearAuth() {
     localStorage.removeItem('splash_token');
@@ -188,6 +191,15 @@ async function initAuthNavbar() {
     if (userGroup) userGroup.style.display = 'none';
     if (mobileGuest) mobileGuest.style.display = 'block';
     if (mobileUser) mobileUser.style.display = 'none';
+    if (navPillDownload) navPillDownload.style.display = 'none';
+    if (mobileNavDownload) mobileNavDownload.style.display = 'none';
+
+    if (stateGuest) stateGuest.style.display = 'block';
+    if (statePending) statePending.style.display = 'none';
+    if (stateApproved) stateApproved.style.display = 'none';
+
+    if (authPollTimer) { clearInterval(authPollTimer); authPollTimer = null; }
+    if (liveCountdownTimer) { clearInterval(liveCountdownTimer); liveCountdownTimer = null; }
   }
 
   async function performLogout(e) {
@@ -202,9 +214,200 @@ async function initAuthNavbar() {
     window.location.reload();
   }
 
-  if (logoutBtn) logoutBtn.addEventListener('click', performLogout);
-  if (mobileLogout) mobileLogout.addEventListener('click', performLogout);
+  if (logoutBtn && !logoutBtn.dataset.bound) {
+    logoutBtn.dataset.bound = "true";
+    logoutBtn.addEventListener('click', performLogout);
+  }
+  if (mobileLogout && !mobileLogout.dataset.bound) {
+    mobileLogout.dataset.bound = "true";
+    mobileLogout.addEventListener('click', performLogout);
+  }
+
+  if (!token) {
+    clearAuth();
+    return;
+  }
+
+  // Optimistic render from cache
+  try {
+    const cached = JSON.parse(localStorage.getItem('splash_user') || '{}');
+    if (cached && cached.username) {
+      if (usernameEl) usernameEl.textContent = cached.username;
+      if (mobileUsernameEl) mobileUsernameEl.textContent = cached.username;
+      if (pendingUsernameEl) pendingUsernameEl.textContent = cached.username;
+      if (metricUsername) metricUsername.textContent = cached.username;
+      if (guestGroup) guestGroup.style.display = 'none';
+      if (userGroup) userGroup.style.display = 'flex';
+      if (mobileGuest) mobileGuest.style.display = 'none';
+      if (mobileUser) mobileUser.style.display = 'flex';
+
+      if (cached.hasActiveAccess) {
+        if (navPillDownload) navPillDownload.style.display = 'inline-flex';
+        if (mobileNavDownload) mobileNavDownload.style.display = 'block';
+        if (stateGuest) stateGuest.style.display = 'none';
+        if (statePending) statePending.style.display = 'none';
+        if (stateApproved) stateApproved.style.display = 'block';
+      } else {
+        if (navPillDownload) navPillDownload.style.display = 'none';
+        if (mobileNavDownload) mobileNavDownload.style.display = 'none';
+        if (stateGuest) stateGuest.style.display = 'none';
+        if (statePending) statePending.style.display = 'flex';
+        if (stateApproved) stateApproved.style.display = 'none';
+      }
+    }
+  } catch {}
+
+  function formatTimeRemaining(seconds) {
+    if (seconds <= 0) return 'Expired';
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+
+    if (d > 0) return `${d}d ${h}h ${m}m ${s}s`;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    return `${m}m ${s}s`;
+  }
+
+  function tickCountdown() {
+    if (!hasActiveAccess || isPermanent) return;
+    if (remainingSeconds > 0) {
+      remainingSeconds--;
+      if (heroDuration) heroDuration.textContent = formatTimeRemaining(remainingSeconds);
+    } else {
+      if (heroDuration) heroDuration.textContent = 'Expired';
+      fetchUserStatus();
+    }
+  }
+
+  function applyData(data) {
+    if (!data || !data.user) return;
+    const user = data.user;
+    const update = data.latestUpdate;
+
+    localStorage.setItem('splash_user', JSON.stringify(user));
+    const name = user.username || 'Player';
+    if (usernameEl) usernameEl.textContent = name;
+    if (mobileUsernameEl) mobileUsernameEl.textContent = name;
+    if (pendingUsernameEl) pendingUsernameEl.textContent = name;
+    if (metricUsername) metricUsername.textContent = name;
+
+    hasActiveAccess = !!user.hasActiveAccess;
+    isPermanent = !!user.isPermanent;
+    if (user.remainingSeconds !== undefined) {
+      remainingSeconds = user.remainingSeconds;
+    }
+
+    if (guestGroup) guestGroup.style.display = 'none';
+    if (userGroup) userGroup.style.display = 'flex';
+    if (mobileGuest) mobileGuest.style.display = 'none';
+    if (mobileUser) mobileUser.style.display = 'flex';
+
+    if (dotEl) {
+      if (hasActiveAccess) {
+        dotEl.style.background = '#22C55E';
+        dotEl.style.boxShadow = '0 0 8px #22C55E';
+      } else if (user.status === 'PendingApproval') {
+        dotEl.style.background = '#F59E0B';
+        dotEl.style.boxShadow = '0 0 8px #F59E0B';
+      } else {
+        dotEl.style.background = '#EF4444';
+        dotEl.style.boxShadow = '0 0 8px #EF4444';
+      }
+    }
+
+    if (hasActiveAccess) {
+      // APPROVED & ACTIVE ACCESS
+      if (navPillDownload) navPillDownload.style.display = 'inline-flex';
+      if (mobileNavDownload) mobileNavDownload.style.display = 'block';
+
+      if (stateGuest) stateGuest.style.display = 'none';
+      if (statePending) statePending.style.display = 'none';
+      if (stateApproved) stateApproved.style.display = 'block';
+
+      if (metricStatus) {
+        metricStatus.textContent = 'Active';
+        metricStatus.className = 'site-metric-col-value status-text';
+      }
+      if (metricModules) metricModules.textContent = '43 / 43 active';
+
+      if (isPermanent) {
+        if (heroDuration) heroDuration.textContent = 'Permanent';
+        if (heroSub) heroSub.textContent = 'Lifetime unrestricted license active • No renewal required';
+        if (metricExpires) metricExpires.textContent = 'Permanent';
+      } else {
+        if (heroDuration) heroDuration.textContent = formatTimeRemaining(remainingSeconds);
+        if (user.accessEndUtc) {
+          const endD = new Date(user.accessEndUtc);
+          if (heroSub) heroSub.textContent = `Next module expires on ${endD.toLocaleString()}`;
+          if (metricExpires) metricExpires.textContent = endD.toLocaleDateString();
+        }
+      }
+
+      // Download endpoints
+      const downloadUrl = `/api/client/download-latest?token=${encodeURIComponent(token)}`;
+      if (btnTopDownload) {
+        btnTopDownload.href = downloadUrl;
+        btnTopDownload.removeAttribute('disabled');
+      }
+      if (btnMainDownload) {
+        btnMainDownload.href = downloadUrl;
+        btnMainDownload.removeAttribute('disabled');
+      }
+
+      if (update && update.version) {
+        if (downloadTitle) downloadTitle.textContent = `Splash Client v${update.version} (Windows x64)`;
+        if (downloadSub && update.fileSizeMb) {
+          downloadSub.textContent = `Cryptographically signed standalone executable (${update.fileSizeMb} MB) • Zero installation required`;
+        }
+      }
+
+      // Live 1-second countdown
+      if (!liveCountdownTimer) {
+        liveCountdownTimer = setInterval(tickCountdown, 1000);
+      }
+    } else {
+      // PENDING APPROVAL OR NOT APPROVED
+      if (navPillDownload) navPillDownload.style.display = 'none';
+      if (mobileNavDownload) mobileNavDownload.style.display = 'none';
+
+      if (stateGuest) stateGuest.style.display = 'none';
+      if (statePending) statePending.style.display = 'flex';
+      if (stateApproved) stateApproved.style.display = 'none';
+
+      if (liveCountdownTimer) {
+        clearInterval(liveCountdownTimer);
+        liveCountdownTimer = null;
+      }
+    }
+  }
+
+  async function fetchUserStatus() {
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (res.status === 401) {
+        clearAuth();
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.user) {
+          applyData(data);
+        }
+      }
+    } catch {}
+  }
+
+  // Initial fetch
+  await fetchUserStatus();
+
+  // Background polling: 2.5s when pending so panel approvals apply instantly; 15s when active
+  if (authPollTimer) clearInterval(authPollTimer);
+  authPollTimer = setInterval(fetchUserStatus, hasActiveAccess ? 15000 : 2500);
 }
+
 
 // Sticky Navbar & Mobile Drawer
 function initNavbar() {

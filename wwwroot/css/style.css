@@ -2240,3 +2240,435 @@ img, svg, video, canvas {
   pointer-events: none;
 }
 
+/* ==========================================================================
+   DOWNLOAD & CLIENT ACCESS SECTION (BETWEEN PRICING & FAQ)
+   Emerald Glow & Real-Time Server-Authoritative Subscription Sync
+   ========================================================================== */
+
+.download-section {
+  padding: 90px 0 70px;
+  position: relative;
+  border-top: 1px solid rgba(0, 136, 255, 0.08);
+  border-bottom: 1px solid rgba(0, 136, 255, 0.08);
+  background: radial-gradient(circle at 50% 30%, rgba(16, 185, 129, 0.04) 0%, transparent 70%);
+}
+
+.download-guest-box {
+  max-width: 620px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 44px 36px;
+  border: 1px solid rgba(0, 136, 255, 0.25);
+  background: rgba(8, 14, 30, 0.85);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  border-radius: 18px;
+}
+
+.guest-box-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: rgba(0, 136, 255, 0.1);
+  border: 1px solid rgba(0, 136, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+
+.guest-box-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #F8FAFC;
+  margin-bottom: 10px;
+}
+
+.guest-box-desc {
+  font-size: 0.95rem;
+  color: #94A3B8;
+  line-height: 1.6;
+  max-width: 480px;
+  margin: 0 auto 26px;
+}
+
+.guest-box-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+/* State 2: Waiting for Access / Pending Approval */
+.waiting-access-card {
+  max-width: 660px;
+  margin: 0 auto;
+  padding: 44px 36px;
+  border: 1.5px solid rgba(245, 158, 11, 0.4);
+  background: rgba(14, 18, 28, 0.92);
+  border-radius: 20px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 30px rgba(245, 158, 11, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.waiting-access-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #F59E0B, #FBBF24, transparent);
+}
+
+.waiting-radar-container {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.waiting-radar-wave {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(245, 158, 11, 0.6);
+  animation: radarPing 2.4s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+
+.waiting-radar-wave.delay {
+  animation-delay: 1.2s;
+}
+
+@keyframes radarPing {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.waiting-radar-core {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+.waiting-badge {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #F59E0B;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+
+.waiting-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #FFFFFF;
+  margin-bottom: 8px;
+}
+
+.waiting-lead {
+  font-size: 1.05rem;
+  color: #94A3B8;
+  margin-bottom: 14px;
+}
+
+.waiting-description {
+  font-size: 0.94rem;
+  color: #64748B;
+  line-height: 1.65;
+  max-width: 520px;
+  margin-bottom: 24px;
+}
+
+.waiting-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #94A3B8;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pulse-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #F59E0B;
+  box-shadow: 0 0 8px #F59E0B;
+  animation: pulseDot 1.6s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.7); opacity: 0.5; }
+}
+
+/* State 3: Approved & Active Access (Exact Mockup Match) */
+.subscription-approved-wrapper {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.approved-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.approved-main-title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #FFFFFF;
+  letter-spacing: -0.5px;
+}
+
+.approved-sub-title {
+  font-size: 0.92rem;
+  color: #94A3B8;
+  margin-top: 4px;
+}
+
+.approved-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn-portal-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 8px 18px;
+  color: #CBD5E1;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-portal-outline:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.btn-portal-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #10B981;
+  border: 1px solid #34D399;
+  border-radius: 999px;
+  padding: 9px 22px;
+  color: #03111C;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.45);
+}
+
+.btn-portal-primary:hover {
+  background: #34D399;
+  box-shadow: 0 6px 26px rgba(16, 185, 129, 0.65);
+  transform: translateY(-1px);
+}
+
+/* THE EMERALD ACCESS CARD (Exact Match to Reference Screenshot) */
+.site-access-card {
+  background: #081414;
+  border: 1.5px solid rgba(16, 185, 129, 0.45);
+  border-radius: 20px;
+  padding: 34px 38px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), 0 0 40px rgba(16, 185, 129, 0.2);
+  position: relative;
+  overflow: hidden;
+  max-width: 580px;
+}
+
+.site-access-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #10B981, #34D399, transparent);
+}
+
+.site-card-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.site-card-brand-tag {
+  font-family: 'JetBrains Mono', monospace, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #10B981;
+  letter-spacing: 1.2px;
+}
+
+.site-card-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #22C55E;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.status-indicator-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22C55E;
+  box-shadow: 0 0 8px #22C55E;
+}
+
+.site-duration-wrap {
+  margin-bottom: 30px;
+}
+
+.site-duration-number {
+  font-size: 3.8rem;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  color: #FFFFFF;
+  line-height: 1.1;
+  font-family: var(--font-sans);
+}
+
+.site-duration-sub {
+  margin-top: 8px;
+  font-size: 0.94rem;
+  color: #94A3B8;
+}
+
+.site-card-metric-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  padding: 18px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.site-metric-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.site-metric-col-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: #64748B;
+  text-transform: uppercase;
+}
+
+.site-metric-col-value {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #F1F5F9;
+}
+
+.site-metric-col-value.status-text {
+  color: #22C55E;
+}
+
+/* Direct Download Strip */
+.site-download-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 24px 30px;
+  background: rgba(8, 14, 30, 0.85);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.strip-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.strip-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.strip-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #F8FAFC;
+  margin-bottom: 3px;
+}
+
+.strip-sub {
+  font-size: 0.84rem;
+  color: #94A3B8;
+}
+
+@media (max-width: 768px) {
+  .site-card-metric-bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .site-duration-number {
+    font-size: 2.8rem;
+  }
+  .approved-top-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+

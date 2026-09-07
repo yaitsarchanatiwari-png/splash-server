@@ -82,6 +82,20 @@ string? FindHtmlFile(params string[] subPaths)
 var security = app.Services.GetRequiredService<SecurityService>();
 var db = app.Services.GetRequiredService<DatabaseService>();
 
+// Auto-extract updates package if present
+try
+{
+    var updatesDir = Path.Combine(app.Environment.ContentRootPath, "data", "updates");
+    Directory.CreateDirectory(updatesDir);
+    var zipPath = Path.Combine(updatesDir, "Splash.zip");
+    var exePath = Path.Combine(updatesDir, "Splash.exe");
+    if (File.Exists(zipPath) && (!File.Exists(exePath) || new FileInfo(exePath).Length == 0))
+    {
+        System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, updatesDir, true);
+    }
+}
+catch { }
+
 // Root / Splash Website & Health Check
 app.MapGet("/", () =>
 {
@@ -974,6 +988,8 @@ app.MapGet("/api/client/download-latest", (HttpContext ctx) =>
         {
             // Search known candidate locations
             string[] candidates = [
+                Path.Combine(app.Environment.ContentRootPath, "data", "updates", "Splash.exe"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "updates", "Splash.exe"),
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "updates", "Splash.exe"),
                 Path.Combine(app.Environment.ContentRootPath, "updates", "Splash.exe"),
                 @"C:\Users\azpla\OneDrive\Desktop\Splash.exe",
