@@ -868,6 +868,86 @@
             </div>
           </div>
 
+          <!-- Terminal Download Block -->
+          <div class="card" style="margin-top: 20px; background: rgba(6,11,24,0.95); border: 1px solid rgba(0,136,255,0.2); border-radius: 14px; padding: 28px 28px 24px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+              <span style="color:#60A5FA; font-weight:700; font-size:0.95rem; letter-spacing:0.04em;">TERMINAL DOWNLOAD</span>
+              <span style="color:#475569; font-size:0.8rem; margin-left:4px;">— paste in CMD or PowerShell, runs without a browser</span>
+            </div>
+
+            <!-- PowerShell -->
+            <div style="margin-bottom:16px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                <span style="color:#94A3B8; font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em;">
+                  <span style="color:#2563EB;">PS</span> &nbsp;PowerShell
+                </span>
+                <button onclick="splashCopyCmd('ps')" id="copy-btn-ps" style="background:rgba(37,99,235,0.15); border:1px solid rgba(37,99,235,0.4); border-radius:6px; color:#60A5FA; font-size:0.75rem; padding:3px 12px; cursor:pointer; transition:all 0.2s;">Copy</button>
+              </div>
+              <div style="background:#030712; border:1px solid #1E3555; border-radius:8px; padding:14px 16px; position:relative; overflow:hidden;">
+                <div style="position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(37,99,235,0.5),transparent);"></div>
+                <code id="cmd-ps" style="color:#A5F3FC; font-family:'Cascadia Code','Consolas','Courier New',monospace; font-size:0.82rem; line-height:1.5; white-space:pre-wrap; word-break:break-all;">Invoke-WebRequest -Uri "https://splash-panel.onrender.com/api/client/download-latest" -OutFile "$env:USERPROFILE\Desktop\Splash.exe" -Headers @{"Accept"="application/octet-stream"}; Write-Host "Splash.exe saved to Desktop" -ForegroundColor Green</code>
+              </div>
+            </div>
+
+            <!-- CMD -->
+            <div style="margin-bottom:16px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                <span style="color:#94A3B8; font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em;">
+                  <span style="color:#10B981;">CMD</span> &nbsp;Command Prompt
+                </span>
+                <button onclick="splashCopyCmd('cmd')" id="copy-btn-cmd" style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); border-radius:6px; color:#34D399; font-size:0.75rem; padding:3px 12px; cursor:pointer; transition:all 0.2s;">Copy</button>
+              </div>
+              <div style="background:#030712; border:1px solid #1E3555; border-radius:8px; padding:14px 16px; position:relative; overflow:hidden;">
+                <div style="position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(16,185,129,0.4),transparent);"></div>
+                <code id="cmd-cmd" style="color:#86EFAC; font-family:'Cascadia Code','Consolas','Courier New',monospace; font-size:0.82rem; line-height:1.5; white-space:pre-wrap; word-break:break-all;">curl -L "https://splash-panel.onrender.com/api/client/download-latest" -o "%USERPROFILE%\Desktop\Splash.exe" && echo Splash.exe saved to Desktop</code>
+              </div>
+            </div>
+
+            <!-- Win+R -->
+            <div>
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                <span style="color:#94A3B8; font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em;">
+                  <span style="color:#F59E0B;">⊞</span> &nbsp;Win+R (Run dialog)
+                </span>
+                <button onclick="splashCopyCmd('winr')" id="copy-btn-winr" style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.35); border-radius:6px; color:#FCD34D; font-size:0.75rem; padding:3px 12px; cursor:pointer; transition:all 0.2s;">Copy</button>
+              </div>
+              <div style="background:#030712; border:1px solid #1E3555; border-radius:8px; padding:14px 16px; position:relative; overflow:hidden;">
+                <div style="position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(245,158,11,0.35),transparent);"></div>
+                <code id="cmd-winr" style="color:#FDE68A; font-family:'Cascadia Code','Consolas','Courier New',monospace; font-size:0.82rem; line-height:1.5; white-space:pre-wrap; word-break:break-all;">powershell -c "Invoke-WebRequest 'https://splash-panel.onrender.com/api/client/download-latest' -OutFile ([Environment]::GetFolderPath('Desktop')+'\Splash.exe')"</code>
+              </div>
+            </div>
+
+            <p style="color:#475569; font-size:0.78rem; margin-top:18px; line-height:1.5;">
+              ⚡ All three commands download <code style="color:#93C5FD;">Splash.exe</code> directly to your Desktop. No browser, no waiting. Requires Windows 10/11 with curl (built-in since Win10 1803) or PowerShell 5.1+.
+            </p>
+          </div>
+
+          <script>
+          function splashCopyCmd(type) {
+            const map = { ps: 'cmd-ps', cmd: 'cmd-cmd', winr: 'cmd-winr' };
+            const btnMap = { ps: 'copy-btn-ps', cmd: 'copy-btn-cmd', winr: 'copy-btn-winr' };
+            const el = document.getElementById(map[type]);
+            const btn = document.getElementById(btnMap[type]);
+            if (!el || !btn) return;
+            navigator.clipboard.writeText(el.textContent.trim()).then(() => {
+              const orig = btn.textContent;
+              btn.textContent = '✓ Copied!';
+              btn.style.opacity = '0.7';
+              setTimeout(() => { btn.textContent = orig; btn.style.opacity = '1'; }, 2000);
+            }).catch(() => {
+              const r = document.createRange();
+              r.selectNodeContents(el);
+              window.getSelection().removeAllRanges();
+              window.getSelection().addRange(r);
+              document.execCommand('copy');
+              window.getSelection().removeAllRanges();
+              btn.textContent = '✓ Copied!';
+              setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+            });
+          }
+          </script>
+
         </div>
 
       </div>
