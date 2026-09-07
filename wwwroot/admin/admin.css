@@ -1155,3 +1155,25 @@ textarea:focus {
     padding: 14px;
   }
 }
+
+.badge-unbound {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(234, 179, 8, 0.12);
+  color: #facc15;
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: help;
+}
+
+.btn-danger-action {
+  color: #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+.btn-danger-action:hover {
+  background: rgba(239, 68, 68, 0.15) !important;
+}

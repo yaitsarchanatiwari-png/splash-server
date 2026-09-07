@@ -955,8 +955,41 @@ app.MapPost("/api/admin/users/grant-by-username", (GrantByUsernameRequest req, H
 
     var trimmedName = req.Username.Trim();
     var user = db.GetUserByUsername(trimmedName);
-    var durationText = req.DurationHours.HasValue && req.DurationHours.Value > 0 ? $"{req.DurationHours.Value} hours" : "Permanent (Lifetime)";
     var callerIp = GetClientIp(ctx);
+
+    // Calculate duration in seconds
+    double totalSeconds = 0;
+    if (req.DurationSeconds.HasValue && req.DurationSeconds.Value > 0)
+    {
+        totalSeconds = req.DurationSeconds.Value;
+    }
+    else if (req.DurationHours.HasValue && req.DurationHours.Value > 0)
+    {
+        totalSeconds = req.DurationHours.Value * 3600.0;
+    }
+
+    DateTime? accessEndUtc = totalSeconds > 0 ? DateTime.UtcNow.AddSeconds(totalSeconds) : null;
+    string durationText;
+    if (totalSeconds <= 0)
+    {
+        durationText = "Permanent (Lifetime)";
+    }
+    else if (totalSeconds < 60)
+    {
+        durationText = $"{totalSeconds:F0} Seconds";
+    }
+    else if (totalSeconds < 3600)
+    {
+        durationText = $"{Math.Round(totalSeconds / 60.0)} Minutes";
+    }
+    else if (totalSeconds < 86400)
+    {
+        durationText = $"{Math.Round(totalSeconds / 3600.0, 1)} Hours";
+    }
+    else
+    {
+        durationText = $"{Math.Round(totalSeconds / 86400.0, 1)} Days";
+    }
 
     if (user == null)
     {
@@ -977,7 +1010,7 @@ app.MapPost("/api/admin/users/grant-by-username", (GrantByUsernameRequest req, H
             PasswordSalt = salt,
             Status = AccessStatus.Approved,
             AccessStartUtc = DateTime.UtcNow,
-            AccessEndUtc = req.DurationHours.HasValue && req.DurationHours.Value > 0 ? DateTime.UtcNow.AddHours(req.DurationHours.Value) : null,
+            AccessEndUtc = accessEndUtc,
             CurrentAppVersion = "1.0.0",
             LastIp = callerIp,
             LastSeenUtc = DateTime.UtcNow,
@@ -1000,14 +1033,7 @@ app.MapPost("/api/admin/users/grant-by-username", (GrantByUsernameRequest req, H
 
     user.Status = AccessStatus.Approved;
     user.AccessStartUtc = DateTime.UtcNow;
-    if (req.DurationHours.HasValue && req.DurationHours.Value > 0)
-    {
-        user.AccessEndUtc = DateTime.UtcNow.AddHours(req.DurationHours.Value);
-    }
-    else
-    {
-        user.AccessEndUtc = null; // Permanent / Lifetime
-    }
+    user.AccessEndUtc = accessEndUtc;
     user.ScheduledAction = null;
     user.ScheduledTimeUtc = null;
 
@@ -1156,6 +1182,18 @@ app.MapPost("/api/admin/updates/finalize", async (FinalizeUpdateRequest req, Htt
     }
     File.Move(partFile, finalPath);
 
+    string? targetUid = req.TargetUserId;
+    string? targetUname = req.TargetUsername?.Trim();
+    if (string.IsNullOrWhiteSpace(targetUid) && !string.IsNullOrWhiteSpace(targetUname))
+    {
+        var targetUser = db.GetUserByUsername(targetUname);
+        if (targetUser != null)
+        {
+            targetUid = targetUser.Id;
+            targetUname = targetUser.Username;
+        }
+    }
+
     var updateRecord = new UpdateRecord
     {
         Id = req.UploadId,
@@ -1167,8 +1205,8 @@ app.MapPost("/api/admin/updates/finalize", async (FinalizeUpdateRequest req, Htt
         RsaSignature = rsaSignature,
         ReleaseNotes = req.ReleaseNotes ?? "",
         TargetType = req.TargetType.Equals("user", StringComparison.OrdinalIgnoreCase) ? "user" : "all",
-        TargetUserId = string.IsNullOrWhiteSpace(req.TargetUserId) ? null : req.TargetUserId,
-        TargetUsername = string.IsNullOrWhiteSpace(req.TargetUsername) ? null : req.TargetUsername,
+        TargetUserId = targetUid,
+        TargetUsername = targetUname,
         CreatedAtUtc = DateTime.UtcNow,
         IsMandatory = req.IsMandatory,
         Status = UpdateStatus.Published
@@ -1178,6 +1216,34 @@ app.MapPost("/api/admin/updates/finalize", async (FinalizeUpdateRequest req, Htt
     db.AddAudit("ADMIN", "PUBLISH_UPDATE", $"Published cryptographically signed update v{req.Version} ({updateRecord.FileSizeMb} MB, SHA: {computedSha[..8]}..., RSA-Verified)", GetClientIp(ctx));
 
     return Results.Ok(new { Success = true, Message = "Update successfully assembled, verified, and published.", Update = updateRecord });
+});
+
+// Delete update endpoint
+app.MapDelete("/api/admin/updates/{id}", (string id, HttpContext ctx) =>
+{
+    var update = db.GetUpdateById(id);
+    if (update != null)
+    {
+        try { if (File.Exists(update.FilePath)) File.Delete(update.FilePath); } catch { }
+        db.DeleteUpdate(id);
+        db.AddAudit("ADMIN", "DELETE_UPDATE", $"Deleted update {update.Version} ({update.FileName})", GetClientIp(ctx));
+    }
+    return Results.Ok(new { Success = true, Message = "Update deleted successfully." });
+});
+
+// Set update version or force re-publish endpoint
+app.MapPost("/api/admin/updates/{id}/set-version", (string id, HttpRequest request, HttpContext ctx) =>
+{
+    var update = db.GetUpdateById(id);
+    if (update == null) return Results.NotFound(new { Success = false, Message = "Update not found." });
+
+    var newVersion = request.Query["version"].ToString();
+    if (!string.IsNullOrWhiteSpace(newVersion))
+    {
+        db.SetUpdateVersion(id, newVersion.Trim());
+        db.AddAudit("ADMIN", "UPDATE_VERSION_CHANGED", $"Changed update {id} version to {newVersion}", GetClientIp(ctx));
+    }
+    return Results.Ok(new { Success = true, Message = "Update version updated successfully." });
 });
 
 // Cancel Upload & Clean Staging

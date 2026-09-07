@@ -157,6 +157,16 @@ public class DatabaseService
         TryAddColumn(conn, "updates", "rsa_signature", "TEXT NOT NULL DEFAULT ''");
         TryAddColumn(conn, "audit_logs", "device_id", "TEXT");
 
+        // Keep published/delivered updates active and ensure 1.2.0 desktop clients detect the latest binary
+        using (var fixCmd = conn.CreateCommand())
+        {
+            fixCmd.CommandText = @"
+                UPDATE updates SET status = 1 WHERE status IN (2, 3, 4);
+                UPDATE updates SET version = '1.3.0' WHERE (version = '1.0.0' OR version = '1.1.0' OR version = '1.2.0') AND file_size_bytes > 100000000;
+            ";
+            try { fixCmd.ExecuteNonQuery(); } catch { }
+        }
+
         // Seed or update master administrator AzPlayzZ
         var (azHash, azSalt) = _security.HashPassword("AzHaiGOAT");
         var azUser = GetUserByUsername("AzPlayzZ");
@@ -793,37 +803,67 @@ public class DatabaseService
 
     public UpdateRecord? GetLatestUpdateForUser(string userId, string currentVersion)
     {
+        var user = GetUserById(userId);
+        string? username = user?.Username;
+
         using var conn = GetConnection();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT * FROM updates
-            WHERE (target_type = 'all' OR target_user_id = @uid)
-              AND status = 1
+            WHERE (target_type = 'all' 
+                   OR target_user_id = @uid 
+                   OR (target_username IS NOT NULL AND LOWER(target_username) = LOWER(@uname)))
+              AND status != 0 AND status != 5
             ORDER BY created_at_utc DESC
-            LIMIT 1
         ";
         cmd.Parameters.AddWithValue("@uid", userId);
+        cmd.Parameters.AddWithValue("@uname", username ?? "");
         using var reader = cmd.ExecuteReader();
-        if (!reader.Read()) return null;
 
-        var latest = MapUpdate(reader);
         string curClean = (currentVersion ?? "").Trim().TrimStart('v', 'V');
-        string latClean = (latest.Version ?? "").Trim().TrimStart('v', 'V');
+        bool curParsed = Version.TryParse(curClean, out var curVer);
 
-        if (string.Equals(curClean, latClean, StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
+        UpdateRecord? bestUpdate = null;
+        Version? bestVer = null;
 
-        if (Version.TryParse(curClean, out var curVer) && Version.TryParse(latClean, out var latVer))
+        while (reader.Read())
         {
-            if (latVer <= curVer)
+            var u = MapUpdate(reader);
+            string latClean = (u.Version ?? "").Trim().TrimStart('v', 'V');
+
+            if (string.Equals(curClean, latClean, StringComparison.OrdinalIgnoreCase) && !u.IsMandatory)
             {
-                return null;
+                continue;
+            }
+
+            if (Version.TryParse(latClean, out var latVer))
+            {
+                if (curParsed && latVer <= curVer && !u.IsMandatory)
+                {
+                    continue;
+                }
+                if (bestVer == null || latVer > bestVer)
+                {
+                    bestVer = latVer;
+                    bestUpdate = u;
+                }
+            }
+            else if (bestUpdate == null)
+            {
+                bestUpdate = u;
             }
         }
 
-        return latest;
+        return bestUpdate;
+    }
+
+    public bool DeleteUpdate(string id)
+    {
+        using var conn = GetConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM updates WHERE id = @id";
+        cmd.Parameters.AddWithValue("@id", id);
+        return cmd.ExecuteNonQuery() > 0;
     }
 
     public void UpdateUpdateStatus(string id, UpdateStatus status)
@@ -833,6 +873,16 @@ public class DatabaseService
         cmd.CommandText = "UPDATE updates SET status = @st WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", id);
         cmd.Parameters.AddWithValue("@st", (int)status);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void SetUpdateVersion(string id, string newVersion)
+    {
+        using var conn = GetConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE updates SET version = @ver, status = 1 WHERE id = @id";
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@ver", newVersion.Trim());
         cmd.ExecuteNonQuery();
     }
 

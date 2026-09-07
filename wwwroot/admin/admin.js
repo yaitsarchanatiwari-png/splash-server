@@ -68,11 +68,33 @@ function setupEventListeners() {
 
   // Quick Grant Form
   document.getElementById('quickGrantForm').addEventListener('submit', handleQuickGrant);
+  const quickDuration = document.getElementById('quickDuration');
+  const quickCustomGroup = document.getElementById('quickCustomGroup');
+  if (quickDuration && quickCustomGroup) {
+    quickDuration.addEventListener('change', () => {
+      if (quickDuration.value === 'custom') {
+        quickCustomGroup.classList.remove('hidden');
+      } else {
+        quickCustomGroup.classList.add('hidden');
+      }
+    });
+  }
 
   // Grant Modal
   closeGrantModal.addEventListener('click', () => grantModal.classList.add('hidden'));
   cancelGrantModal.addEventListener('click', () => grantModal.classList.add('hidden'));
   confirmGrantModal.addEventListener('click', handleConfirmModalGrant);
+  const modalDurationSelectEl = document.getElementById('modalDurationSelect');
+  const modalCustomGroupEl = document.getElementById('modalCustomGroup');
+  if (modalDurationSelectEl && modalCustomGroupEl) {
+    modalDurationSelectEl.addEventListener('change', () => {
+      if (modalDurationSelectEl.value === 'custom') {
+        modalCustomGroupEl.classList.remove('hidden');
+      } else {
+        modalCustomGroupEl.classList.add('hidden');
+      }
+    });
+  }
 
   // Updates Form
   const dropzone = document.getElementById('dropzone');
@@ -236,6 +258,47 @@ function startAuditPolling() {
 }
 
 // User Management API & Rendering
+function getDurationSeconds(durationValue, customAmount, customUnit) {
+  if (durationValue === '0') return 0; // Permanent
+  if (durationValue === 'custom') {
+    const amt = parseFloat(customAmount) || 10;
+    if (customUnit === 'seconds') return Math.max(1, Math.round(amt));
+    if (customUnit === 'minutes') return Math.max(1, Math.round(amt * 60));
+    if (customUnit === 'hours') return Math.max(1, Math.round(amt * 3600));
+    if (customUnit === 'days') return Math.max(1, Math.round(amt * 86400));
+    return Math.round(amt * 60);
+  }
+  if (durationValue.endsWith('s')) return parseInt(durationValue, 10);
+  if (durationValue.endsWith('m')) return parseInt(durationValue, 10) * 60;
+  if (durationValue.endsWith('h')) return parseInt(durationValue, 10) * 3600;
+  if (durationValue.endsWith('d')) return parseInt(durationValue, 10) * 86400;
+  const num = parseFloat(durationValue);
+  if (!isNaN(num) && num > 0) return Math.round(num * 3600);
+  return 0;
+}
+
+function updateDatalists() {
+  const userSuggestions = document.getElementById('userSuggestions');
+  const updateUserSuggestions = document.getElementById('updateUserSuggestions');
+  if (!usersData || !Array.isArray(usersData)) return;
+
+  const names = Array.from(new Set(usersData.map(u => u.username))).filter(Boolean).sort();
+  const optionsHtml = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+  if (userSuggestions) userSuggestions.innerHTML = optionsHtml;
+  if (updateUserSuggestions) updateUserSuggestions.innerHTML = optionsHtml;
+}
+
+window.quickGrantSearchedUser = function(name) {
+  const input = document.getElementById('quickUsername');
+  if (input) {
+    input.value = name;
+    input.focus();
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    input.style.boxShadow = '0 0 0 2px var(--color-accent)';
+    setTimeout(() => { try { input.style.boxShadow = ''; } catch(e){} }, 2500);
+  }
+};
+
 async function fetchUsers() {
   try {
     const res = await fetch(`${API_BASE}/api/admin/users`, {
@@ -244,6 +307,7 @@ async function fetchUsers() {
     if (res.ok) {
       usersData = await res.json();
       updateStats();
+      updateDatalists();
       renderUsersTable();
     } else if (res.status === 401) {
       handleLogout();
@@ -277,7 +341,9 @@ function renderUsersTable() {
   const filter = document.getElementById('statusFilterSelect').value;
 
   const filtered = usersData.filter(u => {
-    const matchSearch = !search || u.username.toLowerCase().includes(search);
+    const matchSearch = !search || 
+                        u.username.toLowerCase().includes(search) || 
+                        (u.deviceLockId && u.deviceLockId.toLowerCase().includes(search));
     const matchFilter = !filter || u.status === filter;
     return matchSearch && matchFilter;
   });
@@ -285,7 +351,23 @@ function renderUsersTable() {
   document.getElementById('filteredCount').textContent = `${filtered.length} Users`;
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No users match your current search/filter.</td></tr>`;
+    if (search) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" class="empty-state" style="padding: 28px 16px;">
+            <div style="font-size: 14px; margin-bottom: 12px; color: var(--text-secondary);">
+              No registered user found matching "<strong>${escapeHtml(search)}</strong>"
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="quickGrantSearchedUser('${escapeHtml(search)}')" style="display:inline-flex; align-items:center; gap:6px;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span>Grant Access to "${escapeHtml(search)}" Now</span>
+            </button>
+          </td>
+        </tr>
+      `;
+    } else {
+      tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No users match your current search/filter.</td></tr>`;
+    }
     return;
   }
 
@@ -298,7 +380,7 @@ function renderUsersTable() {
     else if (u.status === 'Revoked') statusClass = 'badge-revoked';
     else if (u.status === 'Expired') statusClass = 'badge-expired';
 
-    // Access Duration display
+    // Access Duration display with exact real-time seconds ticking
     let durationDisplay = '<span class="text-muted">—</span>';
     if (u.status === 'Approved') {
       if (!u.accessEndUtc) {
@@ -307,9 +389,21 @@ function renderUsersTable() {
         const endDate = new Date(u.accessEndUtc);
         const diffMs = endDate - now;
         if (diffMs > 0) {
-          const hours = Math.floor(diffMs / 3600000);
-          const mins = Math.floor((diffMs % 3600000) / 60000);
-          durationDisplay = `<span class="text-success">${hours}h ${mins}m remaining</span>`;
+          const totalSecs = Math.floor(diffMs / 1000);
+          const days = Math.floor(totalSecs / 86400);
+          const hours = Math.floor((totalSecs % 86400) / 3600);
+          const mins = Math.floor((totalSecs % 3600) / 60);
+          const secs = totalSecs % 60;
+
+          if (days > 0) {
+            durationDisplay = `<span class="text-success">${days}d ${hours}h left</span>`;
+          } else if (hours > 0) {
+            durationDisplay = `<span class="text-success">${hours}h ${mins}m left</span>`;
+          } else if (mins > 0) {
+            durationDisplay = `<span class="text-success">${mins}m ${secs}s left</span>`;
+          } else {
+            durationDisplay = `<span class="text-success" style="font-weight:700;">${secs}s left</span>`;
+          }
         } else {
           durationDisplay = '<span class="text-danger">Expired</span>';
         }
@@ -320,12 +414,13 @@ function renderUsersTable() {
 
     // Hardware Lock
     const hwidDisplay = u.deviceLockId 
-      ? `<span class="device-badge" title="${escapeHtml(u.deviceLockId)}">${escapeHtml(u.deviceLockId.substring(0, 10))}...</span>`
-      : '<span class="text-muted">Unbound</span>';
+      ? `<span class="device-badge" title="Hardware ID: ${escapeHtml(u.deviceLockId)}">${escapeHtml(u.deviceLockId.substring(0, 10))}...</span>`
+      : '<span class="badge-unbound" title="Device not bound yet. Hardware lock will automatically bind to player\'s PC on their first login.">⏳ Unbound (Auto-binds on 1st login)</span>';
 
-    // Last seen
+    // Last seen & Clean version (no double vv)
     const lastSeen = u.lastSeenUtc ? new Date(u.lastSeenUtc).toLocaleTimeString() : 'Never';
-    const version = u.currentAppVersion || '1.0.0';
+    const rawVer = u.currentAppVersion || '1.0.0';
+    const cleanVer = rawVer.replace(/^[vV]+/, '');
 
     return `
       <tr>
@@ -338,7 +433,7 @@ function renderUsersTable() {
           </div>
         </td>
         <td>${durationDisplay}</td>
-        <td><span style="font-family:var(--font-mono);font-size:12px;">v${escapeHtml(version)}</span></td>
+        <td><span style="font-family:var(--font-mono);font-size:12px;">v${escapeHtml(cleanVer)}</span></td>
         <td><span style="color:var(--text-muted);font-size:12px;">${lastSeen}</span></td>
         <td class="text-right">
           <div class="actions-cell">
@@ -361,7 +456,10 @@ window.openGrantModal = function(id, username) {
 
 async function handleConfirmModalGrant() {
   if (!modalTargetUser) return;
-  const hours = parseInt(modalDurationSelect.value, 10);
+  const selectVal = modalDurationSelect.value;
+  const customAmt = document.getElementById('modalCustomAmount')?.value;
+  const customUnit = document.getElementById('modalCustomUnit')?.value;
+  const totalSeconds = getDurationSeconds(selectVal, customAmt, customUnit);
   
   try {
     const res = await fetch(`${API_BASE}/api/admin/users/grant-by-username`, {
@@ -372,7 +470,7 @@ async function handleConfirmModalGrant() {
       },
       body: JSON.stringify({
         username: modalTargetUser.username,
-        durationHours: hours > 0 ? hours : null
+        durationSeconds: totalSeconds > 0 ? totalSeconds : null
       })
     });
 
@@ -392,7 +490,11 @@ async function handleConfirmModalGrant() {
 async function handleQuickGrant(e) {
   e.preventDefault();
   const username = document.getElementById('quickUsername').value.trim();
-  const durationHours = parseInt(document.getElementById('quickDuration').value, 10);
+  const selectVal = document.getElementById('quickDuration').value;
+  const customAmt = document.getElementById('quickCustomAmount')?.value;
+  const customUnit = document.getElementById('quickCustomUnit')?.value;
+  const totalSeconds = getDurationSeconds(selectVal, customAmt, customUnit);
+
   const passwordInput = document.getElementById('quickPassword');
   const initialPassword = passwordInput ? passwordInput.value.trim() : '';
   const msgEl = document.getElementById('quickGrantMsg');
@@ -407,7 +509,7 @@ async function handleQuickGrant(e) {
       },
       body: JSON.stringify({
         username: username,
-        durationHours: durationHours > 0 ? durationHours : null,
+        durationSeconds: totalSeconds > 0 ? totalSeconds : null,
         initialPassword: initialPassword || null
       })
     });
@@ -535,12 +637,55 @@ async function fetchUpdates() {
     if (res.ok) {
       updatesData = await res.json();
       document.getElementById('statUpdateCount').textContent = updatesData.length;
+
+      // Compute recommended next version above client 1.2.0 and existing updates
+      let maxMajor = 1, maxMinor = 2, maxPatch = 0;
+      updatesData.forEach(u => {
+        const parts = (u.version || '').replace(/^[vV]/, '').split('.').map(Number);
+        if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          if (parts[0] > maxMajor || 
+             (parts[0] === maxMajor && parts[1] > maxMinor) || 
+             (parts[0] === maxMajor && parts[1] === maxMinor && (parts[2] || 0) > maxPatch)) {
+            maxMajor = parts[0];
+            maxMinor = parts[1];
+            maxPatch = parts[2] || 0;
+          }
+        }
+      });
+      const nextVer = `${maxMajor}.${maxMinor}.${maxPatch + 1}`;
+      const suggestedEl = document.getElementById('suggestedVer');
+      if (suggestedEl) suggestedEl.textContent = `v${nextVer}`;
+      const verInput = document.getElementById('updateVersion');
+      if (verInput && (!verInput.value || verInput.value === '1.1.0' || verInput.value === '1.0.0')) {
+        verInput.value = nextVer;
+      }
+
       renderUpdatesTable();
     }
   } catch (err) {
     console.error('Error fetching updates:', err);
   }
 }
+
+window.handleDeleteUpdate = async function(id, version) {
+  if (!confirm(`Permanently delete update v${version}? This will remove the package file from the server.`)) {
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/updates/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    if (res.ok) {
+      fetchUpdates();
+      fetchAuditLogs();
+    } else {
+      alert('Failed to delete update.');
+    }
+  } catch (e) {
+    alert('Failed to connect to server: ' + e.message);
+  }
+};
 
 function renderUpdatesTable() {
   const tbody = document.getElementById('updatesTableBody');
@@ -553,10 +698,11 @@ function renderUpdatesTable() {
     const shaShort = u.sha256Hash ? `${u.sha256Hash.substring(0, 10)}...` : 'N/A';
     const target = u.targetType === 'user' ? `User: ${u.targetUsername || u.targetUserId}` : 'All Users (Global)';
     const created = u.createdAtUtc ? new Date(u.createdAtUtc).toLocaleString() : 'N/A';
-    
+    const cleanVer = (u.version || '1.0.0').replace(/^[vV]+/, '');
+
     return `
       <tr>
-        <td><strong>v${escapeHtml(u.version)}</strong></td>
+        <td><strong>v${escapeHtml(cleanVer)}</strong></td>
         <td>${u.fileSizeMb.toFixed(2)} MB</td>
         <td>
           <span style="font-family:var(--font-mono);font-size:11px;" title="${escapeHtml(u.sha256Hash)}">${shaShort}</span>
@@ -564,7 +710,10 @@ function renderUpdatesTable() {
         <td>${escapeHtml(target)}</td>
         <td><span style="color:var(--text-muted);font-size:12px;">${created}</span></td>
         <td>
-          <a href="/api/updates/download/${u.id}" class="btn-action" download style="text-decoration:none;">Download</a>
+          <div style="display:flex; gap:6px;">
+            <a href="/api/updates/download/${u.id}" class="btn-action" download style="text-decoration:none;">Download</a>
+            <button class="btn-action btn-danger-action" onclick="handleDeleteUpdate('${u.id}', '${escapeHtml(cleanVer)}')" title="Delete update">Delete</button>
+          </div>
         </td>
       </tr>
     `;
