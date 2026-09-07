@@ -89,14 +89,15 @@ try
     Directory.CreateDirectory(updatesDir);
     var zipPath = Path.Combine(updatesDir, "Splash.zip");
     var exePath = Path.Combine(updatesDir, "Splash.exe");
-    if (File.Exists(zipPath) && (!File.Exists(exePath) || new FileInfo(exePath).Length == 0))
+    if (File.Exists(zipPath))
     {
-        System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, updatesDir, true);
-    }
-    var wwwrootExe = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "Splash.exe");
-    if (File.Exists(exePath) && (!File.Exists(wwwrootExe) || new FileInfo(wwwrootExe).Length == 0))
-    {
-        try { File.Copy(exePath, wwwrootExe, true); } catch { }
+        bool needsExtract = !File.Exists(exePath) || new FileInfo(exePath).Length == 0 || File.GetLastWriteTimeUtc(zipPath) > File.GetLastWriteTimeUtc(exePath);
+        if (needsExtract)
+        {
+            System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, updatesDir, true);
+            var wwwrootExe = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "Splash.exe");
+            try { File.Copy(exePath, wwwrootExe, true); } catch { }
+        }
     }
 }
 catch { }
@@ -1025,6 +1026,16 @@ app.MapGet("/api/client/download-latest", (HttpContext ctx) =>
 // Direct Public Download for Splash.exe (Instant link for users and CMD/PowerShell)
 app.MapGet("/download/Splash.exe", () =>
 {
+    try
+    {
+        var latestPub = db.GetAllUpdates().FirstOrDefault(u => u.Status == UpdateStatus.Published && File.Exists(u.FilePath));
+        if (latestPub != null && File.Exists(latestPub.FilePath))
+        {
+            return Results.File(File.OpenRead(latestPub.FilePath), "application/vnd.microsoft.portable-executable", "Splash.exe", enableRangeProcessing: true);
+        }
+    }
+    catch { }
+
     string[] candidates = [
         Path.Combine(app.Environment.ContentRootPath, "wwwroot", "Splash.exe"),
         Path.Combine(app.Environment.ContentRootPath, "data", "updates", "Splash.exe"),
@@ -1448,6 +1459,15 @@ app.MapPost("/api/admin/updates/finalize", async (FinalizeUpdateRequest req, Htt
     };
 
     db.CreateUpdate(updateRecord);
+    try
+    {
+        var wwwrootExe = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "Splash.exe");
+        File.Copy(finalPath, wwwrootExe, true);
+        var updatesExe = Path.Combine(app.Environment.ContentRootPath, "data", "updates", "Splash.exe");
+        File.Copy(finalPath, updatesExe, true);
+    }
+    catch { }
+
     db.AddAudit("ADMIN", "PUBLISH_UPDATE", $"Published cryptographically signed update v{req.Version} ({updateRecord.FileSizeMb} MB, SHA: {computedSha[..8]}..., RSA-Verified)", GetClientIp(ctx));
 
     return Results.Ok(new { Success = true, Message = "Update successfully assembled, verified, and published.", Update = updateRecord });
