@@ -424,9 +424,33 @@ app.MapPost("/api/auth/refresh", (RefreshTokenRequest req, HttpContext ctx) =>
 
     if (existingRefresh.IsRevoked)
     {
-        // Stolen token reuse detected: revoke all user sessions immediately!
-        db.RevokeAllUserSessions(existingRefresh.UserId, "REVOKED_REFRESH_TOKEN_REUSED");
-        db.AddAudit(existingRefresh.UserId, "TOKEN_HIJACK_DETECTED", "Revoked refresh token was reused; purged all sessions", ip, req.DeviceId);
+        // 60-second rotation grace period for network retries and concurrent client ticks
+        if (existingRefresh.RotatedAtUtc.HasValue &&
+            DateTime.UtcNow - existingRefresh.RotatedAtUtc.Value < TimeSpan.FromSeconds(60) &&
+            string.Equals(existingRefresh.DeviceId, req.DeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            var userObj = db.GetUserById(existingRefresh.UserId);
+            if (userObj != null && userObj.Status == AccessStatus.Approved)
+            {
+                var graceAccessToken = security.GenerateSecureToken(32);
+                db.CreateSession(new SessionRecord
+                {
+                    Token = graceAccessToken,
+                    UserId = userObj.Id,
+                    Username = userObj.Username,
+                    DeviceId = req.DeviceId,
+                    SecurityStamp = userObj.SecurityStamp,
+                    IsAdmin = userObj.Username.Equals("admin", StringComparison.OrdinalIgnoreCase),
+                    ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+                });
+                var leaseEnv = security.CreateSignedLease(userObj, req.DeviceId);
+                var dto = new UserDto(userObj.Id, userObj.Username, userObj.Status.ToString(), userObj.AccessStartUtc, userObj.AccessEndUtc, userObj.ScheduledAction, userObj.ScheduledTimeUtc, userObj.CurrentAppVersion, userObj.LastSeenUtc, userObj.DeviceLockId);
+                return Results.Ok(new AuthResponse(true, "Token refreshed within rotation grace period.", graceAccessToken, null, userObj.Status.ToString(), leaseEnv, dto));
+            }
+        }
+
+        // Outside grace period: return 401 without wiping user account or active sessions
+        db.AddAudit(existingRefresh.UserId, "REFRESH_REVOKED_RETRY", "Rotated or expired refresh token presented", ip, req.DeviceId);
         return Results.Unauthorized();
     }
 
@@ -785,12 +809,12 @@ app.MapGet("/api/updates/download/{id}", (string id, HttpContext ctx) =>
     return Results.File(stream, "application/octet-stream", update.FileName, enableRangeProcessing: true);
 });
 
-// Report update status
+// Report update status (Client Telemetry - does not unpublish global update)
 app.MapPost("/api/updates/report-status", (ReportStatusRequest req, HttpContext ctx) =>
 {
     if (Enum.TryParse<UpdateStatus>(req.Status, true, out var status))
     {
-        db.UpdateUpdateStatus(req.UpdateId, status);
+        // Client reports (Delivered, Downloaded, Installed) log telemetry but do NOT change the global update's Published state!
         db.AddAudit("CLIENT", "UPDATE_STATUS", $"Update {req.UpdateId} status: {status} {(req.ErrorMessage != null ? $"Error: {req.ErrorMessage}" : "")}", GetClientIp(ctx));
         return Results.Ok(new { Success = true });
     }
@@ -801,7 +825,20 @@ app.MapPost("/api/updates/report-status", (ReportStatusRequest req, HttpContext 
 
 #region Admin Endpoints
 
-// Admin Login
+// Helper to authenticate admin requests via dedicated admin_sessions
+bool IsAdminAuthenticated(HttpContext ctx, DatabaseService dbService)
+{
+    var authHeader = ctx.Request.Headers["Authorization"].ToString();
+    if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer ")) return false;
+    var token = authHeader.Substring("Bearer ".Length).Trim();
+    var adminSession = dbService.GetAdminSession(token);
+    if (adminSession != null && DateTime.UtcNow <= adminSession.ExpiresAtUtc) return true;
+    var regularSession = dbService.GetSession(token);
+    if (regularSession != null && regularSession.IsAdmin && DateTime.UtcNow <= regularSession.ExpiresAtUtc) return true;
+    return false;
+}
+
+// Admin Login - Completely isolated from desktop client sessions
 app.MapPost("/api/admin/login", (LoginRequest req, HttpContext ctx) =>
 {
     var ip = GetClientIp(ctx);
@@ -821,15 +858,16 @@ app.MapPost("/api/admin/login", (LoginRequest req, HttpContext ctx) =>
 
     security.ResetAttempts(ip, req.Username);
     var token = security.GenerateSecureToken(32);
-    db.CreateSession(new SessionRecord
+
+    // Dedicated admin session: NEVER modifies desktop client sessions, refresh tokens, device locks, or security stamp!
+    db.CreateAdminSession(new AdminSessionRecord
     {
         Token = token,
         UserId = user.Id,
         Username = user.Username,
-        DeviceId = "ADMIN_CONSOLE",
-        SecurityStamp = user.SecurityStamp,
-        IsAdmin = true,
-        ExpiresAtUtc = DateTime.UtcNow.AddHours(12)
+        CreatedAtUtc = DateTime.UtcNow,
+        ExpiresAtUtc = DateTime.UtcNow.AddHours(12),
+        IpAddress = ip
     });
 
     db.AddAudit(user.Username, "ADMIN_LOGIN_SUCCESS", "Administrator logged in to Control Panel", ip);
@@ -840,6 +878,7 @@ app.MapPost("/api/admin/login", (LoginRequest req, HttpContext ctx) =>
 // Get Users list
 app.MapGet("/api/admin/users", (string? search, string? status, HttpContext ctx) =>
 {
+    if (!IsAdminAuthenticated(ctx, db)) return Results.Unauthorized();
     var users = db.GetAllUsers(search, status);
     var dtos = users.Select(u => new UserDto(u.Id, u.Username, u.Status.ToString(), u.AccessStartUtc, u.AccessEndUtc, u.ScheduledAction, u.ScheduledTimeUtc, u.CurrentAppVersion, u.LastSeenUtc, u.DeviceLockId));
     return Results.Ok(dtos);

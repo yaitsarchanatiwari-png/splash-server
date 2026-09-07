@@ -64,6 +64,7 @@ public class RefreshTokenRecord
     public DateTime ExpiresAtUtc { get; set; } = DateTime.UtcNow.AddDays(7);
     public bool IsRevoked { get; set; }
     public string? ReplacedByTokenHash { get; set; }
+    public DateTime? RotatedAtUtc { get; set; }
 }
 
 public class SessionRecord
@@ -76,6 +77,16 @@ public class SessionRecord
     public bool IsAdmin { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime ExpiresAtUtc { get; set; } = DateTime.UtcNow.AddMinutes(15); // Short-lived 15m access token
+}
+
+public class AdminSessionRecord
+{
+    public string Token { get; set; } = string.Empty;
+    public string UserId { get; set; } = string.Empty;
+    public string Username { get; set; } = string.Empty;
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime ExpiresAtUtc { get; set; } = DateTime.UtcNow.AddHours(12);
+    public string IpAddress { get; set; } = string.Empty;
 }
 
 public class UpdateRecord

@@ -97,6 +97,15 @@ public class DatabaseService
                 replaced_by_token_hash TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS admin_sessions (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                expires_at_utc TEXT NOT NULL,
+                ip_address TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS sessions (
                 token TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -144,6 +153,7 @@ public class DatabaseService
         TryAddColumn(conn, "users", "lockout_until_utc", "TEXT");
         TryAddColumn(conn, "sessions", "device_id", "TEXT NOT NULL DEFAULT ''");
         TryAddColumn(conn, "sessions", "security_stamp", "TEXT NOT NULL DEFAULT ''");
+        TryAddColumn(conn, "refresh_tokens", "rotated_at_utc", "TEXT");
         TryAddColumn(conn, "updates", "rsa_signature", "TEXT NOT NULL DEFAULT ''");
         TryAddColumn(conn, "audit_logs", "device_id", "TEXT");
 
@@ -386,6 +396,13 @@ public class DatabaseService
             return false;
         }
 
+        // Web browsers and admin console do NOT consume or enforce desktop hardware device locks
+        if (deviceId.StartsWith("WEB_", StringComparison.OrdinalIgnoreCase) ||
+            deviceId.StartsWith("ADMIN", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         var user = GetUserById(userId);
         if (user == null)
         {
@@ -578,7 +595,7 @@ public class DatabaseService
     {
         using var conn = GetConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT token_hash, user_id, device_id, created_at_utc, expires_at_utc, is_revoked, replaced_by_token_hash FROM refresh_tokens WHERE token_hash = @th LIMIT 1";
+        cmd.CommandText = "SELECT token_hash, user_id, device_id, created_at_utc, expires_at_utc, is_revoked, replaced_by_token_hash, rotated_at_utc FROM refresh_tokens WHERE token_hash = @th LIMIT 1";
         cmd.Parameters.AddWithValue("@th", tokenHash);
         using var reader = cmd.ExecuteReader();
         if (reader.Read())
@@ -591,7 +608,8 @@ public class DatabaseService
                 CreatedAtUtc = DateTime.Parse(reader.GetString(3)),
                 ExpiresAtUtc = DateTime.Parse(reader.GetString(4)),
                 IsRevoked = reader.GetInt32(5) == 1,
-                ReplacedByTokenHash = reader.IsDBNull(6) ? null : reader.GetString(6)
+                ReplacedByTokenHash = reader.IsDBNull(6) ? null : reader.GetString(6),
+                RotatedAtUtc = (reader.FieldCount > 7 && !reader.IsDBNull(7)) ? DateTime.Parse(reader.GetString(7)) : null
             };
         }
         return null;
@@ -604,11 +622,12 @@ public class DatabaseService
         cmd.CommandText = @"
             UPDATE refresh_tokens SET
                 is_revoked = 1,
-                replaced_by_token_hash = @nth
+                replaced_by_token_hash = @nth,
+                rotated_at_utc = @rot
             WHERE token_hash = @oth AND is_revoked = 0;
 
-            INSERT INTO refresh_tokens (token_hash, user_id, device_id, created_at_utc, expires_at_utc, is_revoked, replaced_by_token_hash)
-            VALUES (@nth, @uid, @did, @cat, @eat, 0, NULL);
+            INSERT INTO refresh_tokens (token_hash, user_id, device_id, created_at_utc, expires_at_utc, is_revoked, replaced_by_token_hash, rotated_at_utc)
+            VALUES (@nth, @uid, @did, @cat, @eat, 0, NULL, NULL);
         ";
         cmd.Parameters.AddWithValue("@oth", oldTokenHash);
         cmd.Parameters.AddWithValue("@nth", newToken.TokenHash);
@@ -616,6 +635,7 @@ public class DatabaseService
         cmd.Parameters.AddWithValue("@did", newToken.DeviceId);
         cmd.Parameters.AddWithValue("@cat", newToken.CreatedAtUtc.ToString("o"));
         cmd.Parameters.AddWithValue("@eat", newToken.ExpiresAtUtc.ToString("o"));
+        cmd.Parameters.AddWithValue("@rot", DateTime.UtcNow.ToString("o"));
         int affected = cmd.ExecuteNonQuery();
         return affected > 0;
     }
@@ -658,6 +678,61 @@ public class DatabaseService
         cmd.CommandText = "UPDATE refresh_tokens SET is_revoked = 0, expires_at_utc = @newExp WHERE user_id = @uid";
         cmd.Parameters.AddWithValue("@uid", userId);
         cmd.Parameters.AddWithValue("@newExp", DateTime.UtcNow.AddDays(30).ToString("o"));
+        cmd.ExecuteNonQuery();
+    }
+
+    #endregion
+
+    #region Dedicated Admin Sessions
+
+    public void CreateAdminSession(AdminSessionRecord session)
+    {
+        using var conn = GetConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO admin_sessions (token, user_id, username, created_at_utc, expires_at_utc, ip_address)
+            VALUES (@t, @uid, @un, @cat, @eat, @ip)
+            ON CONFLICT(token) DO UPDATE SET
+                expires_at_utc = @eat,
+                ip_address = @ip;
+        ";
+        cmd.Parameters.AddWithValue("@t", session.Token);
+        cmd.Parameters.AddWithValue("@uid", session.UserId);
+        cmd.Parameters.AddWithValue("@un", session.Username);
+        cmd.Parameters.AddWithValue("@cat", session.CreatedAtUtc.ToString("o"));
+        cmd.Parameters.AddWithValue("@eat", session.ExpiresAtUtc.ToString("o"));
+        cmd.Parameters.AddWithValue("@ip", session.IpAddress);
+        cmd.ExecuteNonQuery();
+    }
+
+    public AdminSessionRecord? GetAdminSession(string token)
+    {
+        using var conn = GetConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT token, user_id, username, created_at_utc, expires_at_utc, ip_address FROM admin_sessions WHERE token = @t LIMIT 1";
+        cmd.Parameters.AddWithValue("@t", token);
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read())
+        {
+            return new AdminSessionRecord
+            {
+                Token = reader.GetString(0),
+                UserId = reader.GetString(1),
+                Username = reader.GetString(2),
+                CreatedAtUtc = DateTime.Parse(reader.GetString(3)),
+                ExpiresAtUtc = DateTime.Parse(reader.GetString(4)),
+                IpAddress = reader.IsDBNull(5) ? "127.0.0.1" : reader.GetString(5)
+            };
+        }
+        return null;
+    }
+
+    public void DeleteAdminSession(string token)
+    {
+        using var conn = GetConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM admin_sessions WHERE token = @t";
+        cmd.Parameters.AddWithValue("@t", token);
         cmd.ExecuteNonQuery();
     }
 
@@ -738,6 +813,14 @@ public class DatabaseService
         if (string.Equals(curClean, latClean, StringComparison.OrdinalIgnoreCase))
         {
             return null;
+        }
+
+        if (Version.TryParse(curClean, out var curVer) && Version.TryParse(latClean, out var latVer))
+        {
+            if (latVer <= curVer)
+            {
+                return null;
+            }
         }
 
         return latest;
