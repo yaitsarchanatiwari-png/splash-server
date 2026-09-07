@@ -559,8 +559,8 @@ public class DatabaseService
                 DeviceId = reader.IsDBNull(3) ? "" : reader.GetString(3),
                 SecurityStamp = reader.IsDBNull(4) ? "" : reader.GetString(4),
                 IsAdmin = reader.GetInt32(5) == 1,
-                CreatedAtUtc = DateTime.Parse(reader.GetString(6)),
-                ExpiresAtUtc = DateTime.Parse(reader.GetString(7))
+                CreatedAtUtc = ParseUtc(reader.GetString(6)),
+                ExpiresAtUtc = ParseUtc(reader.GetString(7))
             };
 
             // Immediate Revocation check: verify session security stamp matches current user security stamp
@@ -615,11 +615,11 @@ public class DatabaseService
                 TokenHash = reader.GetString(0),
                 UserId = reader.GetString(1),
                 DeviceId = reader.GetString(2),
-                CreatedAtUtc = DateTime.Parse(reader.GetString(3)),
-                ExpiresAtUtc = DateTime.Parse(reader.GetString(4)),
+                CreatedAtUtc = ParseUtc(reader.GetString(3)),
+                ExpiresAtUtc = ParseUtc(reader.GetString(4)),
                 IsRevoked = reader.GetInt32(5) == 1,
                 ReplacedByTokenHash = reader.IsDBNull(6) ? null : reader.GetString(6),
-                RotatedAtUtc = (reader.FieldCount > 7 && !reader.IsDBNull(7)) ? DateTime.Parse(reader.GetString(7)) : null
+                RotatedAtUtc = (reader.FieldCount > 7 && !reader.IsDBNull(7)) ? ParseUtc(reader.GetString(7)) : null
             };
         }
         return null;
@@ -989,6 +989,11 @@ public class DatabaseService
 
     #region Data Mappers
 
+    private static DateTime ParseUtc(string val)
+    {
+        return DateTime.Parse(val, null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
+    }
+
     private static UserRecord MapUser(SqliteDataReader reader)
     {
         var record = new UserRecord
@@ -997,22 +1002,22 @@ public class DatabaseService
             Username = reader.GetString(1),
             PasswordHash = reader.GetString(2),
             PasswordSalt = reader.GetString(3),
-            CreatedAtUtc = DateTime.Parse(reader.GetString(4)),
+            CreatedAtUtc = ParseUtc(reader.GetString(4)),
             Status = (AccessStatus)reader.GetInt32(5),
-            AccessStartUtc = reader.IsDBNull(6) ? null : DateTime.Parse(reader.GetString(6)),
-            AccessEndUtc = reader.IsDBNull(7) ? null : DateTime.Parse(reader.GetString(7)),
+            AccessStartUtc = reader.IsDBNull(6) ? null : ParseUtc(reader.GetString(6)),
+            AccessEndUtc = reader.IsDBNull(7) ? null : ParseUtc(reader.GetString(7)),
             ScheduledAction = reader.IsDBNull(8) ? null : reader.GetString(8),
-            ScheduledTimeUtc = reader.IsDBNull(9) ? null : DateTime.Parse(reader.GetString(9)),
+            ScheduledTimeUtc = reader.IsDBNull(9) ? null : ParseUtc(reader.GetString(9)),
             CurrentAppVersion = reader.GetString(10),
             LastIp = reader.GetString(11),
-            LastSeenUtc = DateTime.Parse(reader.GetString(12))
+            LastSeenUtc = ParseUtc(reader.GetString(12))
         };
 
         // Extra columns if present
         if (reader.FieldCount > 13 && !reader.IsDBNull(13)) record.SecurityStamp = reader.GetString(13);
         if (reader.FieldCount > 14 && !reader.IsDBNull(14)) record.DeviceLockId = reader.GetString(14);
         if (reader.FieldCount > 15 && !reader.IsDBNull(15)) record.FailedLoginCount = reader.GetInt32(15);
-        if (reader.FieldCount > 16 && !reader.IsDBNull(16)) record.LockoutUntilUtc = DateTime.Parse(reader.GetString(16));
+        if (reader.FieldCount > 16 && !reader.IsDBNull(16)) record.LockoutUntilUtc = ParseUtc(reader.GetString(16));
 
         return record;
     }
@@ -1032,7 +1037,7 @@ public class DatabaseService
             TargetType = reader.IsDBNull(8) ? "all" : reader.GetString(8),
             TargetUserId = reader.IsDBNull(9) ? null : reader.GetString(9),
             TargetUsername = reader.IsDBNull(10) ? null : reader.GetString(10),
-            CreatedAtUtc = reader.IsDBNull(11) ? DateTime.UtcNow : DateTime.Parse(reader.GetString(11)),
+            CreatedAtUtc = reader.IsDBNull(11) ? DateTime.UtcNow : ParseUtc(reader.GetString(11)),
             IsMandatory = !reader.IsDBNull(12) && reader.GetInt32(12) == 1,
             Status = !reader.IsDBNull(13) ? (UpdateStatus)reader.GetInt32(13) : UpdateStatus.Published
         };

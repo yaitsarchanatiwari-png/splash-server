@@ -18,6 +18,12 @@
   status = 200
   force  = true
 
+[[redirects]]
+  from   = "/download/*"
+  to     = "https://splash-panel.onrender.com/download/:splat"
+  status = 200
+  force  = true
+
 # Portal SPA
 [[redirects]]
   from   = "/portal"

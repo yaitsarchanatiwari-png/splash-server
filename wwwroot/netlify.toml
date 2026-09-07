@@ -17,6 +17,12 @@
   status = 200
   force  = true
 
+[[redirects]]
+  from   = "/download/*"
+  to     = "https://splash-panel.onrender.com/download/:splat"
+  status = 200
+  force  = true
+
 # SPA fallback — portal and admin are subdirectory index.html pages
 [[redirects]]
   from   = "/portal"

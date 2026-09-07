@@ -93,6 +93,11 @@ try
     {
         System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, updatesDir, true);
     }
+    var wwwrootExe = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "Splash.exe");
+    if (File.Exists(exePath) && (!File.Exists(wwwrootExe) || new FileInfo(wwwrootExe).Length == 0))
+    {
+        try { File.Copy(exePath, wwwrootExe, true); } catch { }
+    }
 }
 catch { }
 
@@ -1016,6 +1021,27 @@ app.MapGet("/api/client/download-latest", (HttpContext ctx) =>
     var stream = File.OpenRead(targetFilePath);
     return Results.File(stream, "application/octet-stream", targetFileName, enableRangeProcessing: true);
 });
+
+// Direct Public Download for Splash.exe (Instant link for users and CMD/PowerShell)
+app.MapGet("/download/Splash.exe", () =>
+{
+    string[] candidates = [
+        Path.Combine(app.Environment.ContentRootPath, "wwwroot", "Splash.exe"),
+        Path.Combine(app.Environment.ContentRootPath, "data", "updates", "Splash.exe"),
+        @"C:\Users\azpla\OneDrive\Desktop\Splash.exe",
+        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "Splash.exe")
+    ];
+    foreach (var path in candidates)
+    {
+        if (File.Exists(path) && new FileInfo(path).Length > 0)
+        {
+            return Results.File(File.OpenRead(path), "application/vnd.microsoft.portable-executable", "Splash.exe", enableRangeProcessing: true);
+        }
+    }
+    return Results.NotFound(new { Success = false, Message = "Splash.exe not found." });
+});
+
+app.MapGet("/api/client/download-direct", () => Results.Redirect("/download/Splash.exe", permanent: false));
 
 
 // Report update status (Client Telemetry - does not unpublish global update)
