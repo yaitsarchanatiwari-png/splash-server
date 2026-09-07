@@ -96,6 +96,7 @@ const siteConfig = {
 
 // Document Ready Initialization
 document.addEventListener('DOMContentLoaded', () => {
+  initAuthNavbar();
   initNavbar();
   initPricing();
   initExplorer();
@@ -106,6 +107,102 @@ document.addEventListener('DOMContentLoaded', () => {
   init3DMouseInteractions();
   initScrollAnimations();
 });
+
+// Real-time Authentication Sync for Main Navbar
+async function initAuthNavbar() {
+  const token = localStorage.getItem('splash_token');
+  const guestGroup = document.getElementById('nav-guest-actions');
+  const userGroup = document.getElementById('nav-user-actions');
+  const usernameEl = document.getElementById('nav-username');
+  const dotEl = document.getElementById('nav-user-dot');
+  const logoutBtn = document.getElementById('nav-btn-logout');
+
+  const mobileGuest = document.getElementById('mobile-guest-actions');
+  const mobileUser = document.getElementById('mobile-user-actions');
+  const mobileUsernameEl = document.getElementById('mobile-nav-username');
+  const mobileLogout = document.getElementById('mobile-nav-logout');
+
+  if (!token) {
+    if (guestGroup) guestGroup.style.display = 'flex';
+    if (userGroup) userGroup.style.display = 'none';
+    if (mobileGuest) mobileGuest.style.display = 'block';
+    if (mobileUser) mobileUser.style.display = 'none';
+    return;
+  }
+
+  try {
+    const cached = JSON.parse(localStorage.getItem('splash_user') || '{}');
+    if (cached && cached.username) {
+      if (usernameEl) usernameEl.textContent = cached.username;
+      if (mobileUsernameEl) mobileUsernameEl.textContent = cached.username;
+      if (guestGroup) guestGroup.style.display = 'none';
+      if (userGroup) userGroup.style.display = 'flex';
+      if (mobileGuest) mobileGuest.style.display = 'none';
+      if (mobileUser) mobileUser.style.display = 'flex';
+    }
+  } catch {}
+
+  try {
+    const res = await fetch('/api/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && data.user) {
+        localStorage.setItem('splash_user', JSON.stringify(data.user));
+        const username = data.user.username;
+        if (usernameEl) usernameEl.textContent = username;
+        if (mobileUsernameEl) mobileUsernameEl.textContent = username;
+
+        if (dotEl) {
+          if (data.user.hasActiveAccess) {
+            dotEl.style.background = '#22C55E';
+            dotEl.style.boxShadow = '0 0 8px #22C55E';
+          } else if (data.user.status === 'PendingApproval') {
+            dotEl.style.background = '#F59E0B';
+            dotEl.style.boxShadow = '0 0 8px #F59E0B';
+          } else {
+            dotEl.style.background = '#EF4444';
+            dotEl.style.boxShadow = '0 0 8px #EF4444';
+          }
+        }
+
+        if (guestGroup) guestGroup.style.display = 'none';
+        if (userGroup) userGroup.style.display = 'flex';
+        if (mobileGuest) mobileGuest.style.display = 'none';
+        if (mobileUser) mobileUser.style.display = 'flex';
+      } else {
+        clearAuth();
+      }
+    } else if (res.status === 401) {
+      clearAuth();
+    }
+  } catch {}
+
+  function clearAuth() {
+    localStorage.removeItem('splash_token');
+    localStorage.removeItem('splash_user');
+    if (guestGroup) guestGroup.style.display = 'flex';
+    if (userGroup) userGroup.style.display = 'none';
+    if (mobileGuest) mobileGuest.style.display = 'block';
+    if (mobileUser) mobileUser.style.display = 'none';
+  }
+
+  async function performLogout(e) {
+    if (e) e.preventDefault();
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+    } catch {}
+    clearAuth();
+    window.location.reload();
+  }
+
+  if (logoutBtn) logoutBtn.addEventListener('click', performLogout);
+  if (mobileLogout) mobileLogout.addEventListener('click', performLogout);
+}
 
 // Sticky Navbar & Mobile Drawer
 function initNavbar() {

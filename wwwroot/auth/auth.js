@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnRegister = document.getElementById('btn-register');
   const regUsername = document.getElementById('reg-username');
   const regPassword = document.getElementById('reg-password');
-  const regEmail = document.getElementById('reg-email');
+  const regConfirmPassword = document.getElementById('reg-confirm-password');
 
   const turnstileBox = document.getElementById('turnstile-box');
   const turnstileSpinner = document.getElementById('turnstile-spinner');
@@ -162,21 +162,12 @@ document.addEventListener('DOMContentLoaded', () => {
         showAlert('Authenticated successfully! Redirecting...', 'success');
 
         setTimeout(() => {
-          if (isAdminCandidate || (data.user && (data.user.isAdmin || data.user.status === 'Approved'))) {
-            // Admin or approved access -> go to admin or dashboard
-            if (isAdminCandidate) {
-              window.location.href = '/admin';
-            } else {
-              window.location.href = '/#showcase';
-            }
+          if (isAdminCandidate || (data.user && (data.user.isAdmin || data.user.status === 'Approved' && username.toLowerCase() === 'admin'))) {
+            window.location.href = '/admin';
           } else {
-            // Pending or other status
-            showAlert(`Status: ${data.status || 'Pending'}. Waiting for administrator approval.`, 'success');
-            setTimeout(() => {
-              window.location.href = '/';
-            }, 1800);
+            window.location.href = '/portal';
           }
-        }, 800);
+        }, 600);
       } else {
         const errorMsg = (data && data.message) ? data.message : 'Invalid username or password.';
         showAlert(errorMsg, 'error');
@@ -200,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const username = regUsername.value.trim();
     const password = regPassword.value;
-    const email = regEmail.value.trim();
+    const confirmPassword = regConfirmPassword ? regConfirmPassword.value : '';
 
     if (username.length < 3) {
       showAlert('Username must be at least 3 characters.');
@@ -209,6 +200,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (password.length < 6) {
       showAlert('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      showAlert('Passwords do not match. Please verify and re-type.');
       return;
     }
 
@@ -221,8 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           username: username,
           password: password,
-          confirmPassword: password,
-          email: email,
+          confirmPassword: confirmPassword,
           deviceId: 'WEB_CLIENT_' + getOrCreateDeviceId(),
           deviceName: 'Browser Client'
         })
@@ -231,12 +226,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json().catch(() => null);
 
       if (res.ok && data && data.success) {
-        showAlert('Account created! Pending admin approval. You can now sign in.', 'success');
-        signinUsername.value = username;
-        signinPassword.value = '';
+        // Save session immediately
+        if (data.token) {
+          localStorage.setItem('splash_token', data.token);
+        }
+        if (data.user) {
+          localStorage.setItem('splash_user', JSON.stringify(data.user));
+        }
+        showAlert('Account registered! Redirecting to your Access Portal...', 'success');
         setTimeout(() => {
-          showView('login');
-        }, 1500);
+          window.location.href = '/portal';
+        }, 800);
       } else {
         const errorMsg = (data && data.message) ? data.message : 'Registration could not be completed.';
         showAlert(errorMsg, 'error');

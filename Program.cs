@@ -139,6 +139,12 @@ app.MapGet("/auth", () =>
 
 app.MapGet("/login", () => Results.Redirect("/auth"));
 app.MapGet("/register", () => Results.Redirect("/auth#register"));
+app.MapGet("/portal", () =>
+{
+    var path = FindHtmlFile("portal", "index.html");
+    if (path != null) return Results.File(path, "text/html");
+    return Results.NotFound("Portal page index.html not found.");
+});
 
 string GetClientIp(HttpContext ctx)
 {
@@ -574,7 +580,88 @@ app.MapGet("/api/auth/status", (HttpContext ctx) =>
     return Results.Ok(new StatusResponse(true, user.Status.ToString(), message, user.AccessEndUtc, hasAccess, lease, nowUtc));
 });
 
+// Current Authenticated User & Access Metadata (Web Portal & Main Site)
+app.MapGet("/api/auth/me", (HttpContext ctx) =>
+{
+    string? token = null;
+    var authHeader = ctx.Request.Headers["Authorization"].ToString();
+    if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+    {
+        token = authHeader.Substring("Bearer ".Length).Trim();
+    }
+    else if (ctx.Request.Query.TryGetValue("token", out var qToken) && !string.IsNullOrWhiteSpace(qToken))
+    {
+        token = qToken.ToString().Trim();
+    }
+
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        return Results.Json(new { Success = false, Message = "Authentication token required." }, statusCode: 401);
+    }
+
+    var session = db.GetSession(token);
+    if (session == null)
+    {
+        return Results.Json(new { Success = false, Message = "Session expired or invalid." }, statusCode: 401);
+    }
+
+    var user = db.GetUserById(session.UserId);
+    if (user == null || user.SecurityStamp != session.SecurityStamp)
+    {
+        db.DeleteSession(token);
+        return Results.Json(new { Success = false, Message = "Session invalidated." }, statusCode: 401);
+    }
+
+    var nowUtc = DateTime.UtcNow;
+    if (user.Status == AccessStatus.Approved && user.AccessEndUtc.HasValue && nowUtc >= user.AccessEndUtc.Value)
+    {
+        user.Status = AccessStatus.Expired;
+        db.UpdateUser(user);
+        db.AddAudit(user.Username, "EXPIRE", $"Access expired at {user.AccessEndUtc:u}", GetClientIp(ctx), session.DeviceId);
+    }
+
+    bool hasActiveAccess = user.Status == AccessStatus.Approved && (!user.AccessEndUtc.HasValue || nowUtc < user.AccessEndUtc.Value);
+    bool isPermanent = user.Status == AccessStatus.Approved && !user.AccessEndUtc.HasValue;
+    long remainingSeconds = 0;
+    if (user.Status == AccessStatus.Approved && user.AccessEndUtc.HasValue && user.AccessEndUtc.Value > nowUtc)
+    {
+        remainingSeconds = (long)(user.AccessEndUtc.Value - nowUtc).TotalSeconds;
+    }
+
+    var latestUpdate = db.GetLatestUpdateForUser(user.Id, user.Username);
+
+    return Results.Ok(new
+    {
+        Success = true,
+        User = new
+        {
+            Id = user.Id,
+            Username = user.Username,
+            Status = user.Status.ToString(),
+            HasActiveAccess = hasActiveAccess,
+            IsPermanent = isPermanent,
+            RemainingSeconds = remainingSeconds,
+            AccessStartUtc = user.AccessStartUtc,
+            AccessEndUtc = user.AccessEndUtc,
+            CurrentAppVersion = user.CurrentAppVersion,
+            CreatedAtUtc = user.CreatedAtUtc,
+            DeviceLockId = user.DeviceLockId,
+            IsAdmin = session.IsAdmin || user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase)
+        },
+        LatestUpdate = latestUpdate != null ? new
+        {
+            Id = latestUpdate.Id,
+            Version = latestUpdate.Version,
+            FileName = latestUpdate.FileName,
+            FileSizeMb = latestUpdate.FileSizeMb,
+            Sha256Hash = latestUpdate.Sha256Hash,
+            CreatedAtUtc = latestUpdate.CreatedAtUtc
+        } : null
+    });
+});
+
 // Logout
+
 app.MapPost("/api/auth/logout", (HttpContext ctx) =>
 {
     var authHeader = ctx.Request.Headers["Authorization"].ToString();
@@ -808,6 +895,112 @@ app.MapGet("/api/updates/download/{id}", (string id, HttpContext ctx) =>
     var stream = File.OpenRead(update.FilePath);
     return Results.File(stream, "application/octet-stream", update.FileName, enableRangeProcessing: true);
 });
+
+// Protected Client Executable Download (Strict Access Control)
+app.MapGet("/api/client/download-latest", (HttpContext ctx) =>
+{
+    string? token = null;
+    var authHeader = ctx.Request.Headers["Authorization"].ToString();
+    if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+    {
+        token = authHeader.Substring("Bearer ".Length).Trim();
+    }
+    else if (ctx.Request.Query.TryGetValue("token", out var qToken) && !string.IsNullOrWhiteSpace(qToken))
+    {
+        token = qToken.ToString().Trim();
+    }
+
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        return Results.Json(new { Success = false, Message = "Authentication token required to download Splash client." }, statusCode: 401);
+    }
+
+    var session = db.GetSession(token);
+    if (session == null)
+    {
+        return Results.Json(new { Success = false, Message = "Session expired or invalid." }, statusCode: 401);
+    }
+
+    var user = db.GetUserById(session.UserId);
+    if (user == null || user.SecurityStamp != session.SecurityStamp)
+    {
+        db.DeleteSession(token);
+        return Results.Json(new { Success = false, Message = "Session revoked." }, statusCode: 401);
+    }
+
+    var nowUtc = DateTime.UtcNow;
+    if (user.Status == AccessStatus.Approved && user.AccessEndUtc.HasValue && nowUtc >= user.AccessEndUtc.Value)
+    {
+        user.Status = AccessStatus.Expired;
+        db.UpdateUser(user);
+        db.AddAudit(user.Username, "EXPIRE", $"Access expired at {user.AccessEndUtc:u}", GetClientIp(ctx), session.DeviceId);
+    }
+
+    bool hasActiveAccess = user.Status == AccessStatus.Approved && (!user.AccessEndUtc.HasValue || nowUtc < user.AccessEndUtc.Value);
+    if (!hasActiveAccess)
+    {
+        string reason = user.Status switch
+        {
+            AccessStatus.PendingApproval => "Account pending administrator approval. Download is locked.",
+            AccessStatus.Suspended => "Account suspended by administrator. Download is locked.",
+            AccessStatus.Revoked => "Account access revoked. Download is locked.",
+            AccessStatus.Expired => "Access period has expired. Please renew access.",
+            _ => "Access denied. Valid approval required."
+        };
+        db.AddAudit(user.Username, "DOWNLOAD_REJECTED", $"Download attempted while status was {user.Status}", GetClientIp(ctx), session.DeviceId);
+        return Results.Json(new { Success = false, Message = reason, Status = user.Status.ToString() }, statusCode: 403);
+    }
+
+    // Locate the latest published binary executable
+    string? targetFilePath = null;
+    string targetFileName = "Splash.exe";
+
+    var latest = db.GetLatestUpdateForUser(user.Id, user.Username);
+    if (latest != null && !string.IsNullOrWhiteSpace(latest.FilePath) && File.Exists(latest.FilePath))
+    {
+        targetFilePath = latest.FilePath;
+        if (!string.IsNullOrWhiteSpace(latest.FileName)) targetFileName = latest.FileName;
+    }
+    else
+    {
+        var allUpdates = db.GetAllUpdates();
+        var fallback = allUpdates.FirstOrDefault(u => File.Exists(u.FilePath));
+        if (fallback != null)
+        {
+            targetFilePath = fallback.FilePath;
+            if (!string.IsNullOrWhiteSpace(fallback.FileName)) targetFileName = fallback.FileName;
+        }
+        else
+        {
+            // Search known candidate locations
+            string[] candidates = [
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "updates", "Splash.exe"),
+                Path.Combine(app.Environment.ContentRootPath, "updates", "Splash.exe"),
+                @"C:\Users\azpla\OneDrive\Desktop\Splash.exe",
+                Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "outputs", "Splash-Release", "Splash.exe")),
+                Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "outputs", "Splash-Release", "Splash.exe"))
+            ];
+            foreach (var cand in candidates)
+            {
+                if (File.Exists(cand))
+                {
+                    targetFilePath = cand;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (string.IsNullOrEmpty(targetFilePath) || !File.Exists(targetFilePath))
+    {
+        return Results.NotFound(new { Success = false, Message = "Latest client executable is currently being packaged on server. Please try again in a moment." });
+    }
+
+    db.AddAudit(user.Username, "CLIENT_DOWNLOAD", $"Downloaded Splash client binary ({targetFileName})", GetClientIp(ctx), session.DeviceId);
+    var stream = File.OpenRead(targetFilePath);
+    return Results.File(stream, "application/octet-stream", targetFileName, enableRangeProcessing: true);
+});
+
 
 // Report update status (Client Telemetry - does not unpublish global update)
 app.MapPost("/api/updates/report-status", (ReportStatusRequest req, HttpContext ctx) =>
