@@ -948,9 +948,7 @@ public class DatabaseService
             if (u.Status == AccessStatus.Approved && u.AccessEndUtc.HasValue && now >= u.AccessEndUtc.Value)
             {
                 u.Status = AccessStatus.Expired;
-                u.SecurityStamp = Guid.NewGuid().ToString("N");
                 modified = true;
-                RevokeAllUserSessions(u.Id, "ACCESS_EXPIRED");
                 AddAudit("SYSTEM", "EXPIRE", $"User '{u.Username}' access expired at {u.AccessEndUtc:u}", "127.0.0.1");
             }
 
@@ -965,11 +963,9 @@ public class DatabaseService
                         break;
                     case "suspend":
                         u.Status = AccessStatus.Suspended;
-                        RevokeAllUserSessions(u.Id, "SCHEDULED_SUSPENSION");
                         break;
                     case "revoke":
                         u.Status = AccessStatus.Revoked;
-                        RevokeAllUserSessions(u.Id, "SCHEDULED_REVOCATION");
                         break;
                 }
                 AddAudit("SYSTEM", "SCHEDULED_EXECUTE", $"Executed scheduled '{u.ScheduledAction}' for user '{u.Username}'", "127.0.0.1");

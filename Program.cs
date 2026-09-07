@@ -305,7 +305,7 @@ app.MapPost("/api/auth/register", (RegisterRequest req, HttpContext ctx) =>
 
     db.AddAudit(user.Username, "REGISTER", "New user registered. Pending administrator approval.", ip, deviceId);
 
-    // Issue short-lived access token (15m)
+    // Issue 30-day session access token for seamless web & client persistence
     var accessToken = security.GenerateSecureToken(32);
     db.CreateSession(new SessionRecord
     {
@@ -315,7 +315,7 @@ app.MapPost("/api/auth/register", (RegisterRequest req, HttpContext ctx) =>
         DeviceId = deviceId,
         SecurityStamp = user.SecurityStamp,
         IsAdmin = false,
-        ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(30)
     });
 
     // Issue 7-day high-entropy refresh token
@@ -393,7 +393,7 @@ app.MapPost("/api/auth/login", (LoginRequest req, HttpContext ctx) =>
     user.LockoutUntilUtc = null;
     db.UpdateUser(user);
 
-    // Issue short-lived access token (15m)
+    // Issue 30-day session access token for seamless web & client persistence
     var accessToken = security.GenerateSecureToken(32);
     db.CreateSession(new SessionRecord
     {
@@ -403,7 +403,7 @@ app.MapPost("/api/auth/login", (LoginRequest req, HttpContext ctx) =>
         DeviceId = deviceId,
         SecurityStamp = user.SecurityStamp,
         IsAdmin = user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase),
-        ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(30)
     });
 
     // Issue 7-day high-entropy refresh token
@@ -603,6 +603,10 @@ app.MapGet("/api/auth/status", (HttpContext ctx) =>
 // Current Authenticated User & Access Metadata (Web Portal & Main Site)
 app.MapGet("/api/auth/me", (HttpContext ctx) =>
 {
+    ctx.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+    ctx.Response.Headers["Pragma"] = "no-cache";
+    ctx.Response.Headers["Expires"] = "0";
+
     string? token = null;
     var authHeader = ctx.Request.Headers["Authorization"].ToString();
     if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
@@ -624,6 +628,9 @@ app.MapGet("/api/auth/me", (HttpContext ctx) =>
     {
         return Results.Json(new { Success = false, Message = "Session expired or invalid." }, statusCode: 401);
     }
+
+    // Slide session expiration window (30 days from active access)
+    db.ExtendSession(token, DateTime.UtcNow.AddDays(30));
 
     var user = db.GetUserById(session.UserId);
     if (user == null || user.SecurityStamp != session.SecurityStamp)
@@ -1177,8 +1184,8 @@ app.MapPost("/api/admin/users/{id}/access", (string id, UserAccessRequest req, H
         }
         else if (parsedStatus is AccessStatus.Revoked or AccessStatus.Suspended or AccessStatus.PendingApproval)
         {
-            // Immediately purge all sessions and invalidate refresh tokens
-            db.RevokeAllUserSessions(user.Id, $"ADMIN_STATUS_{parsedStatus}", GetClientIp(ctx));
+            // Note: Keep user session intact so the web portal seamlessly displays the updated status in real-time
+            // without logging the user out. Explicit session purge is reserved for /api/admin/users/{id}/revoke-sessions.
         }
     }
 

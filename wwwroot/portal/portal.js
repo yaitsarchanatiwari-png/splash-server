@@ -65,16 +65,20 @@ document.addEventListener('DOMContentLoaded', () => {
   // Fetch Authoritative Data from Server
   fetchStatus();
 
-  // Poll server every 4 seconds for real-time grant/revoke detection
-  pollInterval = setInterval(fetchStatus, 4000);
+  // Poll server every 2.5 seconds for instant grant/revoke detection
+  pollInterval = setInterval(fetchStatus, 2500);
 
   // 1-second Countdown Interval
   countdownTimer = setInterval(tickCountdown, 1000);
 
   async function fetchStatus() {
     try {
-      const res = await fetch('/api/auth/me', {
-        headers: { 'Authorization': 'Bearer ' + token }
+      const res = await fetch('/api/auth/me?_t=' + Date.now(), {
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Cache-Control': 'no-cache'
+        },
+        cache: 'no-store'
       });
 
       if (res.status === 401) {

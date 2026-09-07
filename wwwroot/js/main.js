@@ -96,10 +96,10 @@ const siteConfig = {
 
 // Document Ready Initialization
 document.addEventListener('DOMContentLoaded', () => {
+  initTypewriter();
   initAuthNavbar();
   initNavbar();
   initPricing();
-  initExplorer();
   initVideoShowcase();
   initVideoModal();
   initFaq();
@@ -109,6 +109,36 @@ document.addEventListener('DOMContentLoaded', () => {
   init3DScrollParallax();
   initScrollAnimations();
 });
+
+// Hero Title Smooth Typewriter Entrance
+function initTypewriter() {
+  const elem = document.getElementById('heroSplashText');
+  if (!elem) return;
+  const fullText = "Splash";
+  elem.textContent = '';
+
+  const textSpan = document.createElement('span');
+  const caret = document.createElement('span');
+  caret.className = 'typewriter-caret';
+  caret.textContent = '|';
+  elem.appendChild(textSpan);
+  elem.appendChild(caret);
+
+  let index = 0;
+  const typeInterval = setInterval(() => {
+    if (index < fullText.length) {
+      textSpan.textContent += fullText.charAt(index);
+      index++;
+    } else {
+      clearInterval(typeInterval);
+      setTimeout(() => {
+        caret.style.transition = 'opacity 0.4s ease';
+        caret.style.opacity = '0';
+        setTimeout(() => caret.remove(), 400);
+      }, 700);
+    }
+  }, 110);
+}
 
 // Real-time Authentication & In-Page Download Section Sync
 let authPollTimer = null;
@@ -384,8 +414,12 @@ async function initAuthNavbar() {
 
   async function fetchUserStatus() {
     try {
-      const res = await fetch('/api/auth/me', {
-        headers: { 'Authorization': 'Bearer ' + token }
+      const res = await fetch(`/api/auth/me?_t=${Date.now()}`, {
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Cache-Control': 'no-cache'
+        },
+        cache: 'no-store'
       });
       if (res.status === 401) {
         clearAuth();
@@ -403,9 +437,9 @@ async function initAuthNavbar() {
   // Initial fetch
   await fetchUserStatus();
 
-  // Background polling: 2.5s when pending so panel approvals apply instantly; 15s when active
+  // Background polling: 2.5s continuous for instant panel grant/revoke synchronization
   if (authPollTimer) clearInterval(authPollTimer);
-  authPollTimer = setInterval(fetchUserStatus, hasActiveAccess ? 15000 : 2500);
+  authPollTimer = setInterval(fetchUserStatus, 2500);
 }
 
 
