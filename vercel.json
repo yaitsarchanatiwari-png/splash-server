@@ -15,15 +15,15 @@
   "rewrites": [
     {
       "source": "/api/:match*",
-      "destination": "https://splash-panel.onrender.com/api/:match*"
+      "destination": "https://splash-macro-app.onrender.com/api/:match*"
     },
     {
       "source": "/auth/:match*",
-      "destination": "https://splash-panel.onrender.com/auth/:match*"
+      "destination": "https://splash-macro-app.onrender.com/auth/:match*"
     },
     {
       "source": "/download/:match*",
-      "destination": "https://splash-panel.onrender.com/download/:match*"
+      "destination": "https://splash-macro-app.onrender.com/download/:match*"
     },
     {
       "source": "/portal",

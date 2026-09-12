@@ -1,8 +1,8 @@
 # All downloads are strictly protected and authenticated by Kestrel
 
 # API Proxies to Render backend
-/api/*                       https://splash-panel.onrender.com/api/:splat  200!
-/dl/*                        https://splash-panel.onrender.com/dl/:splat  200!
+/api/*                       https://splash-macro-app.onrender.com/api/:splat  200!
+/dl/*                        https://splash-macro-app.onrender.com/dl/:splat  200!
 
 # SPA Routes
 /portal                      /portal/index.html  200

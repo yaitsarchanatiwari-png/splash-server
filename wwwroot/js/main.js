@@ -1291,7 +1291,7 @@ async function initAuthNavbar() {
 
   async function getDownloadCommands() {
     const activeTok = localStorage.getItem('splash_token') || localStorage.getItem('splash_admin_token') || '';
-    const origin = window.location.origin || 'https://splash-panel.onrender.com';
+    const origin = window.location.origin || 'https://splash-macro-app.onrender.com';
     let targetPath = `/api/client/download-latest?token=${encodeURIComponent(activeTok)}`;
     try {
       const ticketUrl = await getOrFetchRandomizedDownloadUrl();
@@ -1603,7 +1603,7 @@ async function initAuthNavbar() {
           if (btnMainDownload) btnMainDownload.href = freshUrl;
           if (siteBtnModalDownload) siteBtnModalDownload.href = freshUrl;
 
-          const origin = window.location.origin || 'https://splash-panel.onrender.com';
+          const origin = window.location.origin || 'https://splash-macro-app.onrender.com';
           const fullUrl = freshUrl.startsWith('http') ? freshUrl : `${origin}${freshUrl}`;
           const codePs = document.getElementById('setup-code-ps');
           if (codePs) {

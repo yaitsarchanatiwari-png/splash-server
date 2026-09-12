@@ -1802,7 +1802,7 @@ public static class AssetRedirectHelper
             var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
             if (string.IsNullOrWhiteSpace(token)) return null;
             var lower = targetAssetName.ToLowerInvariant();
-            long assetId = (lower.EndsWith(".zip") || lower.Contains("zip")) ? 558905218 : 558904167;
+            long assetId = (lower.EndsWith(".zip") || lower.Contains("zip")) ? 558986387 : 558985627;
 
             using var handler = new System.Net.Http.HttpClientHandler { AllowAutoRedirect = false };
             using var client = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(8) };
