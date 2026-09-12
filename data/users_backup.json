@@ -1,10 +1,10 @@
 [
   {
-    "Id": "5558e66f5788492cb03b43c22fa6ade8",
+    "Id": "3a4d0d139f474c8fa0aada24dd136a47",
     "Username": "admin",
-    "PasswordHash": "5lHZfOC2YqUc6L12BFDodf2HtNMCJY0K2CuqI3ymFX1JNU2HVgLPkr6lIHUiDGeUK\u002B\u002BqdRnOPqojV\u002BSs93JTSA==",
-    "PasswordSalt": "k6RKlpisEZZztFM/0/5iPonYNI4wUdKMHAHgT3jmwew=",
-    "CreatedAtUtc": "2026-09-12T14:51:37.4729324Z",
+    "PasswordHash": "z7cCP5AkimEbK5e7Z3flMoEWnAn97RN4K8ES2\u002BPj37XCmQ\u002BzhidvmCfdeI\u002BvVUIkcd0Z0PXlO1jGNtWUJDZaog==",
+    "PasswordSalt": "YeWjsdl1WOyyJZQn6rDzK5fFboDrdXOCgriPhrVsgFI=",
+    "CreatedAtUtc": "2026-09-12T15:23:17.9584837Z",
     "Status": 1,
     "AccessStartUtc": null,
     "AccessEndUtc": null,
@@ -12,7 +12,7 @@
     "ScheduledTimeUtc": null,
     "CurrentAppVersion": "1.1.0",
     "LastIp": "127.0.0.1",
-    "LastSeenUtc": "2026-09-12T14:51:37.4729326Z",
+    "LastSeenUtc": "2026-09-12T15:23:17.9584839Z",
     "SecurityStamp": "4747093652d84510b6afa6b1d2e5d095",
     "DeviceLockId": null,
     "IsAdmin": true
@@ -20,19 +20,19 @@
   {
     "Id": "6c12f01336854b38a0b9add24714c07a",
     "Username": "AzPlayzZ",
-    "PasswordHash": "yWSNLSp2hQrQV6xQc/V3ewrGALYApcXsllStCX5jVJ9nX5a3CB0l65NTxdWN3D8xCLSGz\u002BwC\u002BdxnyXYFiODLPg==",
-    "PasswordSalt": "Wk/og0hR1/EwTsj9Wf8NSX9VxQfqr6scgIgRlH4\u002B0BY=",
-    "CreatedAtUtc": "2026-09-12T14:51:36.373504Z",
+    "PasswordHash": "TRUlsxPXMO\u002BjTyD7j3GZPRcortF5nVaxbyh5Y52myFnifIMfTwirr/DdyPe\u002BWdf7cnuGsCZbwGSoWe3vd9\u002BF\u002BQ==",
+    "PasswordSalt": "dZ8baq2HTaMvnM/QuEzna47xNfkKx71ca7aATgJxsqI=",
+    "CreatedAtUtc": "2026-09-12T15:23:16.9575254Z",
     "Status": 1,
     "AccessStartUtc": null,
     "AccessEndUtc": null,
     "ScheduledAction": null,
     "ScheduledTimeUtc": null,
-    "CurrentAppVersion": "1.2.0",
+    "CurrentAppVersion": "1.1.0",
     "LastIp": "223.190.85.52",
-    "LastSeenUtc": "2026-09-12T15:22:43.497547Z",
+    "LastSeenUtc": "2026-09-12T15:23:34.4640134Z",
     "SecurityStamp": "4747093652d84510b6afa6b1d2e5d095",
-    "DeviceLockId": "dc0e23cffca9dff327539ac32f39dd558e7df8a0e8feb1dd4bc24afb1a86e44e",
+    "DeviceLockId": null,
     "IsAdmin": true
   }
 ]
