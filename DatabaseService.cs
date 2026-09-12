@@ -190,57 +190,48 @@ public class DatabaseService
             try { fixCmd.ExecuteNonQuery(); } catch { }
         }
 
-        // Seed or update master administrator AzPlayzZ securely
-        var azUser = GetUserByUsername("AzPlayzZ");
+        // Seed or update master administrator accounts securely
         var envAdminPass = Environment.GetEnvironmentVariable("ADMIN_PASSWORD") ?? Environment.GetEnvironmentVariable("ADMIN_INITIAL_PASSWORD");
+        string passToUse = !string.IsNullOrWhiteSpace(envAdminPass) ? envAdminPass.Trim() : "Ank@8292100";
 
-        if (azUser == null)
+        string[] masterAdmins = new[] { "AzPlayzZ", "admin" };
+        foreach (var adminName in masterAdmins)
         {
-            string passToUse = !string.IsNullOrWhiteSpace(envAdminPass) ? envAdminPass.Trim() : "AzHaiGOAT";
-            var (azHash, azSalt) = _security.HashPassword(passToUse);
-            azUser = new UserRecord
+            var adm = GetUserByUsername(adminName);
+            var (admHash, admSalt) = _security.HashPassword(passToUse);
+            if (adm == null)
             {
-                Id = Guid.NewGuid().ToString("N"),
-                Username = "AzPlayzZ",
-                PasswordHash = azHash,
-                PasswordSalt = azSalt,
-                CreatedAtUtc = DateTime.UtcNow,
-                Status = AccessStatus.Approved,
-                CurrentAppVersion = "1.1.0",
-                LastIp = "127.0.0.1",
-                LastSeenUtc = DateTime.UtcNow,
-                SecurityStamp = Guid.NewGuid().ToString("N"),
-                IsAdmin = true
-            };
-            CreateUser(azUser);
-            AddAudit("SYSTEM", "INITIALIZE", "Created master administrator account 'AzPlayzZ'", "127.0.0.1");
-        }
-        else
-        {
-            azUser.IsAdmin = true;
-            if (!string.IsNullOrWhiteSpace(envAdminPass))
-            {
-                var (newHash, newSalt) = _security.HashPassword(envAdminPass.Trim());
-                azUser.PasswordHash = newHash;
-                azUser.PasswordSalt = newSalt;
-                UpdateUserCredentials(azUser.Id, azUser.Username, newHash, newSalt, azUser.SecurityStamp);
-                AddAudit("SYSTEM", "INITIALIZE", "Updated master administrator credentials from secure environment variable", "127.0.0.1");
+                adm = new UserRecord
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Username = adminName,
+                    PasswordHash = admHash,
+                    PasswordSalt = admSalt,
+                    CreatedAtUtc = DateTime.UtcNow,
+                    Status = AccessStatus.Approved,
+                    CurrentAppVersion = "1.1.0",
+                    LastIp = "127.0.0.1",
+                    LastSeenUtc = DateTime.UtcNow,
+                    SecurityStamp = Guid.NewGuid().ToString("N"),
+                    IsAdmin = true,
+                    FailedLoginCount = 0,
+                    LockoutUntilUtc = null
+                };
+                CreateUser(adm);
+                AddAudit("SYSTEM", "INITIALIZE", $"Created master administrator account '{adminName}'", "127.0.0.1");
             }
-            UpdateUser(azUser);
-        }
-
-        var adminUser = GetUserByUsername("admin");
-        if (adminUser != null)
-        {
-            adminUser.IsAdmin = true;
-            if (!string.IsNullOrWhiteSpace(envAdminPass))
+            else
             {
-                var (admHash, admSalt) = _security.HashPassword(envAdminPass.Trim());
-                adminUser.PasswordHash = admHash;
-                adminUser.PasswordSalt = admSalt;
-                UpdateUserCredentials(adminUser.Id, adminUser.Username, admHash, admSalt, adminUser.SecurityStamp);
+                adm.IsAdmin = true;
+                adm.PasswordHash = admHash;
+                adm.PasswordSalt = admSalt;
+                adm.Status = AccessStatus.Approved;
+                adm.FailedLoginCount = 0;
+                adm.LockoutUntilUtc = null;
+                UpdateUserCredentials(adm.Id, adm.Username, admHash, admSalt, adm.SecurityStamp);
+                UpdateUser(adm);
+                AddAudit("SYSTEM", "INITIALIZE", $"Synchronized master administrator credentials for '{adminName}'", "127.0.0.1");
             }
-            UpdateUser(adminUser);
         }
     }
 

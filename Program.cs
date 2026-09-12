@@ -1204,38 +1204,39 @@ var adminApi = app.MapGroup("/api/admin")
 adminApi.MapPost("/login", (LoginRequest req, HttpContext ctx) =>
 {
     var ip = GetClientIp(ctx);
+    var user = db.GetUserByUsername(req.Username);
+    bool isAdmin = user != null && user.IsAdmin;
+
+    // Fast-path: Valid credentials immediately clear any lockout and log in
+    if (user != null && isAdmin && security.VerifyPassword(req.Password, user.PasswordHash, user.PasswordSalt))
+    {
+        security.ResetAttempts(ip, req.Username);
+        var token = security.GenerateAdminToken(user, TimeSpan.FromDays(30));
+
+        // Dedicated admin session: NEVER modifies desktop client sessions, refresh tokens, device locks, or security stamp!
+        db.CreateAdminSession(new AdminSessionRecord
+        {
+            Token = token,
+            UserId = user.Id,
+            Username = user.Username,
+            CreatedAtUtc = DateTime.UtcNow,
+            ExpiresAtUtc = DateTime.UtcNow.AddDays(30),
+            IpAddress = ip
+        });
+
+        db.AddAudit(user.Username, "ADMIN_LOGIN", "Authenticated to secret control panel", ip);
+        return Results.Ok(new AuthResponse(true, "Authenticated.", token, null, null, null, null));
+    }
+
+    // Otherwise apply rate limit for failed attempts
     if (security.IsRateLimited(ip, req.Username, out int retryAfter))
     {
         return Results.Problem($"Rate limit exceeded. Try again in {retryAfter} seconds.", statusCode: 429);
     }
 
-    var user = db.GetUserByUsername(req.Username);
-    bool isAdmin = user != null && user.IsAdmin;
-    if (user == null || !isAdmin || !security.VerifyPassword(req.Password, user.PasswordHash, user.PasswordSalt))
-    {
-        security.RecordFailedAttempt(ip, req.Username);
-        db.AddAudit(req.Username, "ADMIN_LOGIN_FAILED", "Failed admin control panel login", ip);
-        return Results.BadRequest(new AuthResponse(false, "Invalid administrator credentials.", null, null, null, null, null));
-    }
-
-    security.ResetAttempts(ip, req.Username);
-    // 30-day permanent deterministic HMAC-signed token that survives container wipes
-    var token = security.GenerateAdminToken(user, TimeSpan.FromDays(30));
-
-    // Dedicated admin session: NEVER modifies desktop client sessions, refresh tokens, device locks, or security stamp!
-    db.CreateAdminSession(new AdminSessionRecord
-    {
-        Token = token,
-        UserId = user.Id,
-        Username = user.Username,
-        CreatedAtUtc = DateTime.UtcNow,
-        ExpiresAtUtc = DateTime.UtcNow.AddDays(30),
-        IpAddress = ip
-    });
-
-    db.AddAudit(user.Username, "ADMIN_LOGIN_SUCCESS", "Administrator logged in to Control Panel", ip);
-    var userDto = new UserDto(user.Id, user.Username, user.Status.ToString(), user.AccessStartUtc, user.AccessEndUtc, user.ScheduledAction, user.ScheduledTimeUtc, user.CurrentAppVersion, user.LastSeenUtc, user.DeviceLockId);
-    return Results.Ok(new AuthResponse(true, "Admin authenticated.", token, null, user.Status.ToString(), null, userDto));
+    security.RecordFailedAttempt(ip, req.Username);
+    db.AddAudit(req.Username, "ADMIN_LOGIN_FAILED", "Failed admin control panel login", ip);
+    return Results.BadRequest(new AuthResponse(false, "Invalid administrator credentials.", null, null, null, null, null));
 });
 
 // Get Users list
