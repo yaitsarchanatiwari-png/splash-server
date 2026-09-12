@@ -1,28 +1,10 @@
 [
   {
-    "Id": "bdd7d139cc914509b29dbf28e54bce9f",
-    "Username": "admin",
-    "PasswordHash": "FwzPgsITYzkQRlYNkTIFoaV1bLeWzDxpJotI4r5uDS2uNJPAeIMLUOong3tYnp2NqcBSk4iJFqbwNgS30DT2Mw==",
-    "PasswordSalt": "8xe26LBkDDwpQAH21A4WhTAWwmdmzAg5fudtiP9A3dY=",
-    "CreatedAtUtc": "2026-09-12T14:11:00.3792487Z",
-    "Status": 1,
-    "AccessStartUtc": null,
-    "AccessEndUtc": null,
-    "ScheduledAction": null,
-    "ScheduledTimeUtc": null,
-    "CurrentAppVersion": "1.1.0",
-    "LastIp": "127.0.0.1",
-    "LastSeenUtc": "2026-09-12T14:11:00.3792489Z",
-    "SecurityStamp": "b6c2ff0fa98e4b898790fefab969ca8d",
-    "DeviceLockId": null,
-    "IsAdmin": true
-  },
-  {
-    "Id": "1f7b36eeec334c0aaa12bec7e659e857",
+    "Id": "a12ec02d416b4df9903d5278f5d7bf6b",
     "Username": "AzPlayzZ",
-    "PasswordHash": "/shgWQGWnRTnXwcJ2sMjziThZ0vZRFQiR9Hhujtbwemc8\u002BKa4PdqdenV/M0yhEcY8DsxOzmBjAYqgk0w\u002BOZWsg==",
-    "PasswordSalt": "2aBfHPua1QxNxcZD5/brAkVN460wbDOYmfQ54TxVj1A=",
-    "CreatedAtUtc": "2026-09-12T14:10:57.881155Z",
+    "PasswordHash": "RlxIX7ZHrPMpeQqrfwa2Dcn9qGozicq8f9NGTwBcHjZdrjnSM8FNYm1/27QrB1WoDyiAZX251Wlk47IexwOS1Q==",
+    "PasswordSalt": "slXhW\u002BSP5dvHvK9olidgfnUnroAszZW4ttPvKbQWPBc=",
+    "CreatedAtUtc": "2026-09-12T14:11:40.7956395Z",
     "Status": 1,
     "AccessStartUtc": null,
     "AccessEndUtc": null,
@@ -30,8 +12,8 @@
     "ScheduledTimeUtc": null,
     "CurrentAppVersion": "1.1.0",
     "LastIp": "127.0.0.1",
-    "LastSeenUtc": "2026-09-12T14:10:57.8812298Z",
-    "SecurityStamp": "186acec1244945858951f986b29d9160",
+    "LastSeenUtc": "2026-09-12T14:11:40.7956851Z",
+    "SecurityStamp": "174fafc82d1f4b5fae8c25d830be3abe",
     "DeviceLockId": null,
     "IsAdmin": true
   }
