@@ -46,9 +46,9 @@
     "AccessEndUtc": null,
     "ScheduledAction": null,
     "ScheduledTimeUtc": null,
-    "CurrentAppVersion": "1.2.0",
-    "LastIp": "223.190.85.52",
-    "LastSeenUtc": "2026-09-12T15:21:28.0799776Z",
+    "CurrentAppVersion": "1.1.0",
+    "LastIp": "127.0.0.1",
+    "LastSeenUtc": "2026-09-12T14:51:36.3735467Z",
     "SecurityStamp": "4747093652d84510b6afa6b1d2e5d095",
     "DeviceLockId": "dc0e23cffca9dff327539ac32f39dd558e7df8a0e8feb1dd4bc24afb1a86e44e",
     "IsAdmin": true
