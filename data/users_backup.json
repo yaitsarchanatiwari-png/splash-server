@@ -1,23 +1,5 @@
 [
   {
-    "Id": "17de3364b0084a7c9864e0e7256cfc17",
-    "Username": "admin",
-    "PasswordHash": "u5qfHoCHbn0zS5SotQ8cOtnhVwvVz2qZYbif1uqdogjEpEo14i4LZoGISAjqBWsZut4nMSZdlMyXYsjmd/7TgA==",
-    "PasswordSalt": "jxPt3WCaQLHI2wUvgYk1DLtjHGFGV9nGmALR7GNF/dI=",
-    "CreatedAtUtc": "2026-09-12T14:08:15.3062465Z",
-    "Status": 1,
-    "AccessStartUtc": null,
-    "AccessEndUtc": null,
-    "ScheduledAction": null,
-    "ScheduledTimeUtc": null,
-    "CurrentAppVersion": "1.1.0",
-    "LastIp": "127.0.0.1",
-    "LastSeenUtc": "2026-09-12T14:08:15.3062467Z",
-    "SecurityStamp": "9061c86ff48d4ff18296df728f55059d",
-    "DeviceLockId": null,
-    "IsAdmin": true
-  },
-  {
     "Id": "bd3912ca31e8412894aabb5c6925fafa",
     "Username": "AzPlayzZ",
     "PasswordHash": "e0vw\u002BY8LhU5wV87bOdolsuIpediTKvMN2Czv\u002B2xuyyY5CKehXzozedZMLi6piVzaEMMc\u002BmNJUP9VF8Cmr\u002BrePA==",
