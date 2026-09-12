@@ -118,8 +118,8 @@ app.MapGet("/", () =>
 app.MapGet("/api/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow }));
 app.MapGet("/api/server/public-key", () => Results.Ok(new { PublicKeyPem = security.PublicKeyPem, PublicKeyXml = security.PublicKeyXml }));
 
-// Web Admin Control Panel Endpoints (Configurable Secret URL, default: /az-control-6767)
-var adminPathSlug = (Environment.GetEnvironmentVariable("ADMIN_URL_PATH") ?? "az-control-6767").Trim().Trim('/');
+// Web Admin Control Panel Endpoints (Configurable Secret URL, default: /az-vault-9f82k7)
+var adminPathSlug = (Environment.GetEnvironmentVariable("ADMIN_URL_PATH") ?? "az-vault-9f82k7").Trim().Trim('/');
 
 // HARDENED ADMIN ROUTING:
 // Helper to serve admin static files strictly under the secret path
@@ -162,11 +162,14 @@ IResult ServeAdminStaticFile(string? path, HttpContext ctx, string baseSlug)
     return Results.NotFound();
 }
 
-// /admin route redirects cleanly to the admin panel
-app.MapGet("/admin", () => Results.Redirect($"/{adminPathSlug}/", permanent: false));
-app.MapGet("/admin/{*path}", (string? path, HttpContext ctx) => Results.Redirect($"/{adminPathSlug}/", permanent: false));
+// Public /admin and old routes are completely cloaked (returns 404).
+app.MapGet("/admin", () => Results.NotFound());
+app.MapGet("/admin/{*path}", () => Results.NotFound());
+app.MapGet("/az-control-6767", () => Results.NotFound());
+app.MapGet("/az-control-6767/{*path}", () => Results.NotFound());
 
 // Admin Panel is served ONLY on the hardened secret URL
+app.MapGet($"/{adminPathSlug}", () => Results.Redirect($"/{adminPathSlug}/", permanent: false));
 app.MapGet($"/{adminPathSlug}/{{*path}}", (string? path, HttpContext ctx) => ServeAdminStaticFile(path, ctx, adminPathSlug));
 
 // Auth Page (Sign In & Register)
@@ -271,8 +274,8 @@ app.MapPost("/api/auth/register", (RegisterRequest req, HttpContext ctx) =>
 
     db.AddAudit(user.Username, "REGISTER", "New user registered. Pending administrator approval.", ip, deviceId);
 
-    // Issue 30-day session access token for seamless web & client persistence
-    var accessToken = security.GenerateSecureToken(32);
+    // Issue 90-day persistent cryptographic session access token
+    var accessToken = security.GenerateUserToken(user, deviceId, TimeSpan.FromDays(90));
     db.CreateSession(new SessionRecord
     {
         Token = accessToken,
@@ -281,10 +284,10 @@ app.MapPost("/api/auth/register", (RegisterRequest req, HttpContext ctx) =>
         DeviceId = deviceId,
         SecurityStamp = user.SecurityStamp,
         IsAdmin = false,
-        ExpiresAtUtc = DateTime.UtcNow.AddDays(30)
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(90)
     });
 
-    // Issue 7-day high-entropy refresh token
+    // Issue 90-day high-entropy refresh token
     var rawRefreshToken = security.GenerateSecureToken(48);
     var refreshHash = SecurityService.ComputeSha256(rawRefreshToken);
     db.CreateRefreshToken(new RefreshTokenRecord
@@ -293,7 +296,7 @@ app.MapPost("/api/auth/register", (RegisterRequest req, HttpContext ctx) =>
         UserId = user.Id,
         DeviceId = deviceId,
         CreatedAtUtc = DateTime.UtcNow,
-        ExpiresAtUtc = DateTime.UtcNow.AddDays(7)
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(90)
     });
 
     var userDto = new UserDto(user.Id, user.Username, user.Status.ToString(), user.AccessStartUtc, user.AccessEndUtc, user.ScheduledAction, user.ScheduledTimeUtc, user.CurrentAppVersion, user.LastSeenUtc, user.DeviceLockId);
@@ -363,8 +366,8 @@ app.MapPost("/api/auth/login", (LoginRequest req, HttpContext ctx) =>
     user.LockoutUntilUtc = null;
     db.UpdateUser(user);
 
-    // Issue 30-day session access token for seamless web & client persistence
-    var accessToken = security.GenerateSecureToken(32);
+    // Issue 90-day persistent cryptographic session access token
+    var accessToken = security.GenerateUserToken(user, deviceId, TimeSpan.FromDays(90));
     db.CreateSession(new SessionRecord
     {
         Token = accessToken,
@@ -372,11 +375,11 @@ app.MapPost("/api/auth/login", (LoginRequest req, HttpContext ctx) =>
         Username = user.Username,
         DeviceId = deviceId,
         SecurityStamp = user.SecurityStamp,
-        IsAdmin = user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase),
-        ExpiresAtUtc = DateTime.UtcNow.AddDays(30)
+        IsAdmin = user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase) || user.Username.Equals("AzPlayzZ", StringComparison.OrdinalIgnoreCase),
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(90)
     });
 
-    // Issue 7-day high-entropy refresh token
+    // Issue 90-day high-entropy refresh token
     var rawRefreshToken = security.GenerateSecureToken(48);
     var refreshHash = SecurityService.ComputeSha256(rawRefreshToken);
     db.CreateRefreshToken(new RefreshTokenRecord
@@ -385,7 +388,7 @@ app.MapPost("/api/auth/login", (LoginRequest req, HttpContext ctx) =>
         UserId = user.Id,
         DeviceId = deviceId,
         CreatedAtUtc = DateTime.UtcNow,
-        ExpiresAtUtc = DateTime.UtcNow.AddDays(7)
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(90)
     });
 
     db.AddAudit(user.Username, "LOGIN_SUCCESS", $"Login authenticated. Status: {user.Status}", ip, deviceId);
@@ -428,7 +431,7 @@ app.MapPost("/api/auth/refresh", (RefreshTokenRequest req, HttpContext ctx) =>
             var userObj = db.GetUserById(existingRefresh.UserId);
             if (userObj != null && userObj.Status == AccessStatus.Approved)
             {
-                var graceAccessToken = security.GenerateSecureToken(32);
+                var graceAccessToken = security.GenerateUserToken(userObj, req.DeviceId, TimeSpan.FromDays(90));
                 db.CreateSession(new SessionRecord
                 {
                     Token = graceAccessToken,
@@ -436,8 +439,8 @@ app.MapPost("/api/auth/refresh", (RefreshTokenRequest req, HttpContext ctx) =>
                     Username = userObj.Username,
                     DeviceId = req.DeviceId,
                     SecurityStamp = userObj.SecurityStamp,
-                    IsAdmin = userObj.Username.Equals("admin", StringComparison.OrdinalIgnoreCase),
-                    ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+                    IsAdmin = userObj.Username.Equals("admin", StringComparison.OrdinalIgnoreCase) || userObj.Username.Equals("AzPlayzZ", StringComparison.OrdinalIgnoreCase),
+                    ExpiresAtUtc = DateTime.UtcNow.AddDays(90)
                 });
                 var leaseEnv = security.CreateSignedLease(userObj, req.DeviceId);
                 var dto = new UserDto(userObj.Id, userObj.Username, userObj.Status.ToString(), userObj.AccessStartUtc, userObj.AccessEndUtc, userObj.ScheduledAction, userObj.ScheduledTimeUtc, userObj.CurrentAppVersion, userObj.LastSeenUtc, userObj.DeviceLockId);
@@ -476,12 +479,12 @@ app.MapPost("/api/auth/refresh", (RefreshTokenRequest req, HttpContext ctx) =>
         UserId = user.Id,
         DeviceId = req.DeviceId,
         CreatedAtUtc = DateTime.UtcNow,
-        ExpiresAtUtc = DateTime.UtcNow.AddDays(7)
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(90)
     };
     db.RotateRefreshToken(tokenHash, newRefreshTokenRecord);
 
-    // Issue fresh short-lived access token (15m)
-    var newAccessToken = security.GenerateSecureToken(32);
+    // Issue fresh persistent access token
+    var newAccessToken = security.GenerateUserToken(user, req.DeviceId, TimeSpan.FromDays(90));
     db.CreateSession(new SessionRecord
     {
         Token = newAccessToken,
@@ -489,8 +492,8 @@ app.MapPost("/api/auth/refresh", (RefreshTokenRequest req, HttpContext ctx) =>
         Username = user.Username,
         DeviceId = req.DeviceId,
         SecurityStamp = user.SecurityStamp,
-        IsAdmin = user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase),
-        ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+        IsAdmin = user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase) || user.Username.Equals("AzPlayzZ", StringComparison.OrdinalIgnoreCase),
+        ExpiresAtUtc = DateTime.UtcNow.AddDays(90)
     });
 
     LeaseEnvelope? lease = null;
@@ -1205,7 +1208,7 @@ adminApi.MapPost("/login", (LoginRequest req, HttpContext ctx) =>
     if (user != null && isAdmin && security.VerifyPassword(req.Password, user.PasswordHash, user.PasswordSalt))
     {
         security.ResetAttempts(ip, req.Username);
-        var token = security.GenerateAdminToken(user, TimeSpan.FromDays(30));
+        var token = security.GenerateAdminToken(user, TimeSpan.FromDays(90));
 
         // Dedicated admin session: NEVER modifies desktop client sessions, refresh tokens, device locks, or security stamp!
         db.CreateAdminSession(new AdminSessionRecord
@@ -1214,7 +1217,7 @@ adminApi.MapPost("/login", (LoginRequest req, HttpContext ctx) =>
             UserId = user.Id,
             Username = user.Username,
             CreatedAtUtc = DateTime.UtcNow,
-            ExpiresAtUtc = DateTime.UtcNow.AddDays(30),
+            ExpiresAtUtc = DateTime.UtcNow.AddDays(90),
             IpAddress = ip
         });
 

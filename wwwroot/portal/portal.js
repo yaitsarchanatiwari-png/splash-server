@@ -74,6 +74,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // 1-second Countdown Interval
   countdownTimer = setInterval(tickCountdown, 1000);
 
+  let consecutivePortal401 = 0;
+
   async function fetchStatus() {
     try {
       const res = await fetch('/api/auth/me?_t=' + Date.now(), {
@@ -85,12 +87,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (res.status === 401) {
-        // Token invalid or revoked
-        localStorage.removeItem('splash_token');
-        localStorage.removeItem('splash_user');
-        window.location.href = '/auth#login';
+        consecutivePortal401++;
+        if (consecutivePortal401 >= 5) {
+          localStorage.removeItem('splash_token');
+          localStorage.removeItem('splash_user');
+          window.location.href = '/auth#login';
+        }
         return;
       }
+      consecutivePortal401 = 0;
 
       if (res.ok) {
         const data = await res.json();
@@ -113,11 +118,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (fallbackRes.status === 401) {
-          localStorage.removeItem('splash_token');
-          localStorage.removeItem('splash_user');
-          window.location.href = '/auth#login';
+          consecutivePortal401++;
+          if (consecutivePortal401 >= 5) {
+            localStorage.removeItem('splash_token');
+            localStorage.removeItem('splash_user');
+            window.location.href = '/auth#login';
+          }
           return;
         }
+        consecutivePortal401 = 0;
 
         if (fallbackRes.ok) {
           const st = await fallbackRes.json();

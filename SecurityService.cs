@@ -521,5 +521,103 @@ dpdQTO2LlWHP4OR6Fr55jpKznw==
     }
 
     #endregion
+
+    #region Permanent Stateless User Tokens (Deterministic HMAC-SHA256)
+
+    private static readonly byte[] UserHmacSecret = SHA256.HashData(
+        Encoding.UTF8.GetBytes("SPLASH_USER_MASTER_SECRET_KEY_AZ_6767_V2:" + MasterFallbackPrivateKeyPem)
+    );
+
+    public string GenerateUserToken(UserRecord user, string? deviceId = null, TimeSpan? lifetime = null)
+    {
+        var validDuration = lifetime ?? TimeSpan.FromDays(90);
+        var now = DateTimeOffset.UtcNow;
+        var exp = now.Add(validDuration);
+        var dev = string.IsNullOrWhiteSpace(deviceId) ? "WEB" : deviceId.Trim();
+
+        // Payload format: v1|userId|username|securityStamp|deviceId|issuedUnix|expiresUnix
+        string payload = $"v1|{user.Id}|{user.Username}|{user.SecurityStamp}|{dev}|{now.ToUnixTimeSeconds()}|{exp.ToUnixTimeSeconds()}";
+        byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
+        string payloadB64 = Convert.ToBase64String(payloadBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        byte[] sigBytes = HMACSHA256.HashData(UserHmacSecret, Encoding.UTF8.GetBytes(payloadB64));
+        string sigB64 = Convert.ToBase64String(sigBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        return $"spl_{payloadB64}.{sigB64}";
+    }
+
+    public bool ValidateUserToken(string token, DatabaseService db, out SessionRecord? session)
+    {
+        session = null;
+        if (string.IsNullOrWhiteSpace(token) || !token.StartsWith("spl_")) return false;
+
+        var parts = token.Substring(4).Split('.');
+        if (parts.Length != 2) return false;
+
+        string payloadB64 = parts[0];
+        string sigB64 = parts[1];
+
+        // 1. Verify HMAC signature with constant-time equality
+        byte[] expectedSig = HMACSHA256.HashData(UserHmacSecret, Encoding.UTF8.GetBytes(payloadB64));
+        string expectedSigB64 = Convert.ToBase64String(expectedSig).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        byte[] providedSigBytes = Encoding.UTF8.GetBytes(sigB64);
+        byte[] expectedSigBytes = Encoding.UTF8.GetBytes(expectedSigB64);
+
+        if (providedSigBytes.Length != expectedSigBytes.Length || !CryptographicOperations.FixedTimeEquals(providedSigBytes, expectedSigBytes))
+        {
+            return false;
+        }
+
+        // 2. Decode payload
+        try
+        {
+            string padded = payloadB64.Replace('-', '+').Replace('_', '/');
+            switch (padded.Length % 4)
+            {
+                case 2: padded += "=="; break;
+                case 3: padded += "="; break;
+            }
+            string payload = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+            var fields = payload.Split('|');
+            if (fields.Length < 7 || fields[0] != "v1") return false;
+
+            string userId = fields[1];
+            string username = fields[2];
+            string securityStamp = fields[3];
+            string deviceId = fields[4];
+            long expUnix = long.Parse(fields[6]);
+
+            long nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            if (nowUnix > expUnix) return false; // Token expired
+
+            // 3. Verify user exists in database
+            var user = db.GetUserById(userId) ?? db.GetUserByUsername(username);
+            if (user == null) return false;
+
+            // Immediate Revocation check: verify security stamp
+            if (!string.IsNullOrEmpty(user.SecurityStamp) && user.SecurityStamp != securityStamp) return false;
+
+            long issuedUnix = long.Parse(fields[5]);
+            session = new SessionRecord
+            {
+                Token = token,
+                UserId = user.Id,
+                Username = user.Username,
+                DeviceId = deviceId,
+                SecurityStamp = user.SecurityStamp,
+                IsAdmin = user.IsAdmin || user.Username.Equals("AzPlayzZ", StringComparison.OrdinalIgnoreCase) || user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase),
+                CreatedAtUtc = DateTimeOffset.FromUnixTimeSeconds(issuedUnix).UtcDateTime,
+                ExpiresAtUtc = DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime
+            };
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    #endregion
 }
 

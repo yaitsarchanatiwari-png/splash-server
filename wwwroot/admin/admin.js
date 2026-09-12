@@ -224,8 +224,8 @@ let consecutive401Count = 0;
 
 function handleApi401() {
   consecutive401Count++;
-  // Require at least 2 consecutive 401s before logging out to protect against transient edge/redeploy glitches
-  if (consecutive401Count >= 2) {
+  // Require at least 5 consecutive 401s before logging out to protect against transient edge/redeploy glitches
+  if (consecutive401Count >= 5) {
     handleLogout();
   }
 }
@@ -284,7 +284,11 @@ async function verifySession() {
       showDashboard();
     } else if (res.status === 401) {
       isVerifyingSession = false;
-      handleLogout();
+      handleApi401();
+      if (authToken) {
+        showWakingUpState();
+        setTimeout(verifySession, 3000);
+      }
     } else {
       // Server is sleeping/waking up (502/503/504 on Render cold start)
       // KEEP SESSION TOKEN and retry!

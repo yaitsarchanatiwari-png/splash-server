@@ -1683,6 +1683,8 @@ async function initAuthNavbar() {
     }
   }
 
+  let consecutiveMain401Count = 0;
+
   async function fetchUserStatus() {
     let activeToken = localStorage.getItem('splash_token') || localStorage.getItem('splash_admin_token');
     if (!activeToken) {
@@ -1711,9 +1713,13 @@ async function initAuthNavbar() {
         }
       }
       if (res.status === 401) {
-        clearAuth();
+        consecutiveMain401Count++;
+        if (consecutiveMain401Count >= 5) {
+          clearAuth();
+        }
         return;
       }
+      consecutiveMain401Count = 0;
       if (res.ok) {
         const data = await res.json();
         if (data && data.success && data.user) {
@@ -1732,9 +1738,13 @@ async function initAuthNavbar() {
           cache: 'no-store'
         });
         if (fallbackRes.status === 401) {
-          clearAuth();
+          consecutiveMain401Count++;
+          if (consecutiveMain401Count >= 5) {
+            clearAuth();
+          }
           return;
         }
+        consecutiveMain401Count = 0;
         if (fallbackRes.ok) {
           const st = await fallbackRes.json();
           if (st && st.status) {
