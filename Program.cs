@@ -127,10 +127,6 @@ IResult ServeAdminStaticFile(string? path, HttpContext ctx, string baseSlug)
 {
     if (string.IsNullOrWhiteSpace(path))
     {
-        if (ctx.Request.Path.Value != null && !ctx.Request.Path.Value.EndsWith('/'))
-        {
-            return Results.Redirect($"/{baseSlug}/" + ctx.Request.QueryString, permanent: false);
-        }
         var p = FindHtmlFile("admin", "index.html");
         if (p != null) return Results.File(p, "text/html");
         return Results.NotFound();
@@ -169,7 +165,8 @@ app.MapGet("/az-control-6767", () => Results.NotFound());
 app.MapGet("/az-control-6767/{*path}", () => Results.NotFound());
 
 // Admin Panel is served ONLY on the hardened secret URL
-app.MapGet($"/{adminPathSlug}", () => Results.Redirect($"/{adminPathSlug}/", permanent: false));
+app.MapGet($"/{adminPathSlug}", (HttpContext ctx) => ServeAdminStaticFile(null, ctx, adminPathSlug));
+app.MapGet($"/{adminPathSlug}/", (HttpContext ctx) => ServeAdminStaticFile(null, ctx, adminPathSlug));
 app.MapGet($"/{adminPathSlug}/{{*path}}", (string? path, HttpContext ctx) => ServeAdminStaticFile(path, ctx, adminPathSlug));
 
 // Auth Page (Sign In & Register)
