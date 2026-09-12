@@ -166,7 +166,6 @@ app.MapGet("/az-control-6767/{*path}", () => Results.NotFound());
 
 // Admin Panel is served ONLY on the hardened secret URL
 app.MapGet($"/{adminPathSlug}", (HttpContext ctx) => ServeAdminStaticFile(null, ctx, adminPathSlug));
-app.MapGet($"/{adminPathSlug}/", (HttpContext ctx) => ServeAdminStaticFile(null, ctx, adminPathSlug));
 app.MapGet($"/{adminPathSlug}/{{*path}}", (string? path, HttpContext ctx) => ServeAdminStaticFile(path, ctx, adminPathSlug));
 
 // Auth Page (Sign In & Register)
