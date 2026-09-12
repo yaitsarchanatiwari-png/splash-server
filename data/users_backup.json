@@ -50,7 +50,7 @@
     "LastIp": "223.190.85.52",
     "LastSeenUtc": "2026-09-12T14:24:58.5123602Z",
     "SecurityStamp": "0a45fc2520f24171af756d1ed9487337",
-    "DeviceLockId": null,
+    "DeviceLockId": "HWID-TEST-DEVICE-01",
     "IsAdmin": false
   }
 ]
