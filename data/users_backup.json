@@ -34,5 +34,23 @@
     "SecurityStamp": "99894a2da3ec492f8cb26d4821da0d70",
     "DeviceLockId": null,
     "IsAdmin": true
+  },
+  {
+    "Id": "f6876799-b53f-4348-9d91-cb619e59f462",
+    "Username": "e2e_tester_1789223095",
+    "PasswordHash": "hueBYxX98ER21TGiHzEf1quU73Inj9mK5KfBmX3Mkcs3jzb/K/jiC1WfH3WuIoRIYPBP2z\u002BdS8SorAo3vwDqtg==",
+    "PasswordSalt": "Lto0RDEvu0EWxmUmNgGe6x7bWTgU5oGaDO2LG1iBHoY=",
+    "CreatedAtUtc": "2026-09-12T14:24:58.5123544Z",
+    "Status": 0,
+    "AccessStartUtc": null,
+    "AccessEndUtc": null,
+    "ScheduledAction": null,
+    "ScheduledTimeUtc": null,
+    "CurrentAppVersion": "1.0.0",
+    "LastIp": "223.190.85.52",
+    "LastSeenUtc": "2026-09-12T14:24:58.5123602Z",
+    "SecurityStamp": "0a45fc2520f24171af756d1ed9487337",
+    "DeviceLockId": null,
+    "IsAdmin": false
   }
 ]
