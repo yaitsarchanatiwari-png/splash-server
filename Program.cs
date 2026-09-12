@@ -162,15 +162,9 @@ IResult ServeAdminStaticFile(string? path, HttpContext ctx, string baseSlug)
     return Results.NotFound();
 }
 
-// Public /admin route is completely cloaked (returns 404). Only secret key query (?key=6767) redirects to secret URL.
-app.MapGet("/admin/{*path}", (string? path, HttpContext ctx) =>
-{
-    if (ctx.Request.Query.TryGetValue("key", out var k) && string.Equals(k, "6767", StringComparison.OrdinalIgnoreCase))
-    {
-        return Results.Redirect($"/{adminPathSlug}/", permanent: false);
-    }
-    return Results.NotFound();
-});
+// /admin route redirects cleanly to the admin panel
+app.MapGet("/admin", () => Results.Redirect($"/{adminPathSlug}/", permanent: false));
+app.MapGet("/admin/{*path}", (string? path, HttpContext ctx) => Results.Redirect($"/{adminPathSlug}/", permanent: false));
 
 // Admin Panel is served ONLY on the hardened secret URL
 app.MapGet($"/{adminPathSlug}/{{*path}}", (string? path, HttpContext ctx) => ServeAdminStaticFile(path, ctx, adminPathSlug));
@@ -1789,6 +1783,7 @@ public class ScheduledAccessWorker : BackgroundService
 public static class AssetRedirectHelper
 {
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Url, DateTime ExpiresAt)> s_cache = new(StringComparer.OrdinalIgnoreCase);
+    private static (long ZipId, long SetupId, DateTime LastCheck) s_assetIds = (559155485, 559154826, DateTime.MinValue);
 
     public static string? GetGitHubAssetRedirectUrl(string targetAssetName)
     {
@@ -1801,8 +1796,41 @@ public static class AssetRedirectHelper
         {
             var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
             if (string.IsNullOrWhiteSpace(token)) return null;
+
+            // Refresh asset IDs from GitHub releases API periodically
+            if (DateTime.UtcNow - s_assetIds.LastCheck > TimeSpan.FromMinutes(10))
+            {
+                try
+                {
+                    using var apiHandler = new System.Net.Http.HttpClientHandler { AllowAutoRedirect = true };
+                    using var apiClient = new System.Net.Http.HttpClient(apiHandler) { Timeout = TimeSpan.FromSeconds(5) };
+                    apiClient.DefaultRequestHeaders.UserAgent.ParseAdd("Splash-Security-Vault");
+                    apiClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("token", token);
+                    var releaseJson = apiClient.GetStringAsync("https://api.github.com/repos/yaitsarchanatiwari-png/splash-downloads/releases").GetAwaiter().GetResult();
+                    using var doc = System.Text.Json.JsonDocument.Parse(releaseJson);
+                    if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
+                    {
+                        var first = doc.RootElement[0];
+                        if (first.TryGetProperty("assets", out var assets) && assets.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            long foundZip = s_assetIds.ZipId;
+                            long foundSetup = s_assetIds.SetupId;
+                            foreach (var a in assets.EnumerateArray())
+                            {
+                                var name = a.GetProperty("name").GetString() ?? "";
+                                var id = a.GetProperty("id").GetInt64();
+                                if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) foundZip = id;
+                                else if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) foundSetup = id;
+                            }
+                            s_assetIds = (foundZip, foundSetup, DateTime.UtcNow);
+                        }
+                    }
+                }
+                catch { }
+            }
+
             var lower = targetAssetName.ToLowerInvariant();
-            long assetId = (lower.EndsWith(".zip") || lower.Contains("zip")) ? 559019186 : 559018435;
+            long assetId = (lower.EndsWith(".zip") || lower.Contains("zip")) ? s_assetIds.ZipId : s_assetIds.SetupId;
 
             using var handler = new System.Net.Http.HttpClientHandler { AllowAutoRedirect = false };
             using var client = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(8) };
