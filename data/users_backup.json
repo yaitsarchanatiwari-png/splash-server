@@ -1,10 +1,10 @@
 [
   {
-    "Id": "3edca920048a4907aae2327fe8975dd4",
+    "Id": "7f968f6487be4e0abcbd544a39f8079f",
     "Username": "AzPlayzZ",
-    "PasswordHash": "0p1rp5TBFRfxydP9A\u002BSrkI0QryA8byICPqojZvQl7PO1H0zjCIABUJ6sVeekUSr442lz1/PvU/VTAB4NtgpJQQ==",
-    "PasswordSalt": "n40N1xAW61Dj4oU012zm5MMNA\u002BZs0NRZjrxhnXYYwmQ=",
-    "CreatedAtUtc": "2026-09-12T13:56:18.3150661Z",
+    "PasswordHash": "Ev/EAdSXjst/wjLB\u002BZamLWiPI4m7jmfTdMIgidug/UV3Poep\u002BsJSZNArsow12gEXeCiev5RhFYnoMzFMAvYWtQ==",
+    "PasswordSalt": "8Erjot9OI3LCTIGUDZRzVe1Nlnn8ODgdQ9zl3MNyca0=",
+    "CreatedAtUtc": "2026-09-12T13:57:10.8812025Z",
     "Status": 1,
     "AccessStartUtc": null,
     "AccessEndUtc": null,
@@ -12,8 +12,8 @@
     "ScheduledTimeUtc": null,
     "CurrentAppVersion": "1.1.0",
     "LastIp": "127.0.0.1",
-    "LastSeenUtc": "2026-09-12T13:56:18.315132Z",
-    "SecurityStamp": "82c55fbfb778430d81fd70927b4d4805",
+    "LastSeenUtc": "2026-09-12T13:57:10.8812671Z",
+    "SecurityStamp": "76f0cbb6d52d4a79b2a1dddff5fd2714",
     "DeviceLockId": null,
     "IsAdmin": true
   }
