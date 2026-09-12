@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Splash.Server</AssemblyName>
+    <RootNamespace>Splash.Server</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="data/users_backup.json" CopyToOutputDirectory="Always" />
+    <Content Update="data/keys/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="data/users_backup.json" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+</Project>

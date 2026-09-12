@@ -1,0 +1,45 @@
+bin/
+obj/
+*.user
+.vs/
+*.exe
+*.dll
+*.pdb
+
+# Local Database & Secrets
+*.db
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/*.sqlite-wal
+data/*.sqlite-shm
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+!data/users_backup.json
+!data/keys/
+!data/keys/*.pem
+!data/updates/
+!data/updates/Splash.zip
+
+# Cryptographic Keys & Certificates
+*.pfx
+*.p12
+
+
+# Environment & Config
+.env
+.env.*
+*.local
+server.txt
+
+# Staging & Temporary Files
+*.part
+backups/
+logs/
+*.log
+tmp/
+temp/

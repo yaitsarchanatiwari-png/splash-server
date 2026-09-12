@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 500">
+  <rect width="750" height="500" fill="#009C3B"/>
+  <polygon points="375,40 700,250 375,460 50,250" fill="#FFDF00"/>
+  <circle cx="375" cy="250" r="115" fill="#002776"/>
+  <!-- White curved band with green stars -->
+  <path d="M265,270 C310,210 440,210 485,270" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round"/>
+  <!-- Southern Cross stars -->
+  <g fill="#FFFFFF">
+    <circle cx="375" cy="290" r="4"/>
+    <circle cx="375" cy="330" r="4"/>
+    <circle cx="350" cy="305" r="4"/>
+    <circle cx="400" cy="305" r="4"/>
+    <circle cx="388" cy="318" r="2.5"/>
+    <circle cx="340" cy="335" r="3"/>
+    <circle cx="415" cy="325" r="3"/>
+    <circle cx="330" cy="280" r="3"/>
+  </g>
+</svg>

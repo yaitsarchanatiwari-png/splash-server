@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 500">
+  <rect width="750" height="500" fill="#EE1C25"/>
+  <defs>
+    <g id="star">
+      <polygon points="0,-1 0.588,0.809 -0.951,-0.309 0.951,-0.309 -0.588,0.809" fill="#FFDE00"/>
+    </g>
+  </defs>
+  <!-- Main large star -->
+  <use href="#star" transform="translate(125, 125) scale(62)"/>
+  <!-- 4 small stars pointing to center (125, 125) -->
+  <use href="#star" transform="translate(250, 50) rotate(-51.34) scale(21)"/>
+  <use href="#star" transform="translate(300, 100) rotate(-30.96) scale(21)"/>
+  <use href="#star" transform="translate(300, 175) rotate(0) scale(21)"/>
+  <use href="#star" transform="translate(250, 225) rotate(20.66) scale(21)"/>
+</svg>
